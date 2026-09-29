@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "ok": true,
+  "symbol": "NDX",
+  "current_close": 30276.81,
+  "current_date": "2026-09-28",
+  "ath_close": 30732.4,
+  "ath_date": "2026-09-22",
+  "drawdown_pct": -1.4824,
+  "total_records": 7805,
+  "fetched_at": "2026-09-29T15:46:19.327700Z",
+  "source": "Nasdaq official API",
+  "source_endpoint": "https://api.nasdaq.com/api/quote/NDX/historical",
+  "source_kind": "official-historical-close",
+  "fetch_method": "nasdaq-api"
+}

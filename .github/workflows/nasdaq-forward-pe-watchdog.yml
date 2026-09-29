@@ -1,0 +1,83 @@
+name: Market Monitor - Nasdaq 100 Forward P/E Watchdog
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "monitors/nasdaq-forward-pe/fetch.py"
+      - "monitors/nasdaq-forward-pe/test_fetch.py"
+      - ".github/workflows/nasdaq-forward-pe-watchdog.yml"
+  workflow_dispatch:
+  schedule:
+    # Health-only checks are offset 15 minutes from the main 3,33 schedule.
+    # They use a separate fresh runner and query only when committed data is >55 minutes old.
+    - cron: "18,48 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nasdaq100-forward-pe-update
+  queue: max
+
+jobs:
+  recover:
+    defaults:
+      run:
+        working-directory: monitors/nasdaq-forward-pe
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Check committed state health
+        id: freshness
+        shell: bash
+        run: |
+          if python fetch.py --check-latest --max-fetch-age-seconds 3300; then
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run regression tests before recovery
+        if: steps.freshness.outputs.stale == 'true'
+        run: python -m unittest -v test_fetch.py
+
+      - name: Recover latest.json
+        if: steps.freshness.outputs.stale == 'true'
+        run: python fetch.py
+
+      - name: Validate recovered latest.json
+        if: steps.freshness.outputs.stale == 'true'
+        run: python fetch.py --check-latest --max-fetch-age-seconds 120
+
+      - name: Commit recovered state
+        if: steps.freshness.outputs.stale == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add latest.json
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Watchdog refresh Nasdaq 100 forward P/E"
+
+          for attempt in 1 2 3; do
+            if git push; then
+              exit 0
+            fi
+            echo "push failed; retry ${attempt}/3"
+            git pull --rebase origin main
+            sleep $((attempt * 2))
+          done
+          exit 1

@@ -1,0 +1,108 @@
+name: Market Monitor - Nasdaq 100 Forward P/E
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "monitors/nasdaq-forward-pe/fetch.py"
+      - "monitors/nasdaq-forward-pe/test_fetch.py"
+      - ".github/workflows/nasdaq-forward-pe.yml"
+  workflow_dispatch:
+  schedule:
+    # Trendonify is effectively daily. A 30-minute cadence keeps consumer freshness
+    # inside the 90-minute SLA while sharply reducing DuckDuckGo anti-bot pressure.
+    # Avoid minute 0, where GitHub documents higher schedule congestion.
+    - cron: "3,33 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nasdaq100-forward-pe-update
+  queue: max
+
+jobs:
+  update:
+    defaults:
+      run:
+        working-directory: monitors/nasdaq-forward-pe
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Run regression tests
+        run: python -m unittest -v test_fetch.py
+
+      # One search request per fresh runner. Repeated queries from the same runner
+      # can provoke DuckDuckGo HTTP 202 / anti-bot responses.
+      - name: Fetch and validate Trendonify search index
+        run: python fetch.py
+
+      - name: Validate generated latest.json
+        run: python fetch.py --check-latest --max-fetch-age-seconds 120
+
+      - name: Decide whether a commit is needed
+        id: decide
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import subprocess
+          from datetime import datetime, timezone
+
+          with open("latest.json", encoding="utf-8") as f:
+              new = json.load(f)
+          try:
+              old = json.loads(subprocess.check_output(
+                  ["git", "show", "HEAD:monitors/nasdaq-forward-pe/latest.json"], text=True, stderr=subprocess.DEVNULL
+              ))
+          except Exception:
+              old = {}
+
+          keys = (
+              "schema_version", "ok", "forward_pe", "percentile_10y",
+              "data_date", "source", "source_url", "source_kind", "fetch_method",
+          )
+          material = any(old.get(k) != new.get(k) for k in keys)
+          heartbeat = False
+          if not material:
+              try:
+                  old_ts = datetime.fromisoformat(old["fetched_at"].replace("Z", "+00:00"))
+                  heartbeat = (datetime.now(timezone.utc) - old_ts).total_seconds() >= 3000
+              except Exception:
+                  heartbeat = True
+
+          needed = material or heartbeat
+          print(f"material={material} heartbeat={heartbeat} needed={needed}")
+          with open("/tmp/needed", "w") as f:
+              f.write("true" if needed else "false")
+          PY
+          echo "needed=$(cat /tmp/needed)" >> "$GITHUB_OUTPUT"
+
+      - name: Commit latest.json
+        if: steps.decide.outputs.needed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add latest.json
+          git commit -m "Update Nasdaq 100 forward P/E"
+
+          for attempt in 1 2 3; do
+            if git push; then
+              exit 0
+            fi
+            echo "push failed; retry ${attempt}/3"
+            git pull --rebase origin main
+            sleep $((attempt * 2))
+          done
+          exit 1

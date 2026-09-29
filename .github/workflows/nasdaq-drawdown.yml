@@ -1,0 +1,57 @@
+name: Market Monitor - Nasdaq 100 Drawdown
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "monitors/nasdaq-drawdown/drawdown.py"
+      - "monitors/nasdaq-drawdown/test_drawdown.py"
+      - ".github/workflows/nasdaq-drawdown.yml"
+  workflow_dispatch:
+  schedule:
+    - cron: "12 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nasdaq100-drawdown-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    defaults:
+      run:
+        working-directory: monitors/nasdaq-drawdown
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Run drawdown tests
+        run: python -m unittest -v test_drawdown.py
+      - name: Fetch complete NDX close history from official Nasdaq API
+        run: python drawdown.py
+      - name: Validate drawdown payload
+        run: python drawdown.py --check-latest --max-fetch-age-seconds 120
+      - name: Commit drawdown.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add drawdown.json
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Update Nasdaq 100 drawdown"
+          for attempt in 1 2 3; do
+            if git push; then exit 0; fi
+            git pull --rebase origin main
+            sleep $((attempt * 2))
+          done
+          exit 1

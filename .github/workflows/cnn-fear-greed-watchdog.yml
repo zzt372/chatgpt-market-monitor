@@ -1,0 +1,104 @@
+# Independent watchdog for missed/delayed GitHub schedule events
+name: Market Monitor - CNN Fear & Greed Watchdog
+
+on:
+  schedule:
+    # Independent cadence from the primary updater. It normally exits quickly
+    # and only refreshes when latest.json has stopped moving.
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/cnn-fear-greed-watchdog.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cnn-fear-greed-update
+  cancel-in-progress: true
+
+jobs:
+  watchdog:
+    defaults:
+      run:
+        working-directory: monitors/cnn-fear-greed
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check latest.json heartbeat
+        id: heartbeat
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          p = Path('latest.json')
+          refresh = True
+          reason = 'latest.json missing'
+
+          try:
+              data = json.loads(p.read_text(encoding='utf-8'))
+              raw = data.get('fetched_at')
+              if not raw:
+                  reason = 'fetched_at missing'
+              else:
+                  dt = datetime.fromisoformat(raw.replace('Z', '+00:00')).astimezone(timezone.utc)
+                  age = (datetime.now(timezone.utc) - dt).total_seconds()
+                  refresh = age >= 45 * 60
+                  reason = f'heartbeat age={age/60:.1f} minutes'
+          except Exception as exc:
+              reason = f'heartbeat parse failure: {type(exc).__name__}: {exc}'
+
+          print(reason)
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write(f"refresh={'true' if refresh else 'false'}\n")
+              fh.write(f"reason={reason}\n")
+          PY
+
+      - name: Set up Python
+        if: steps.heartbeat.outputs.refresh == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Recover stale latest.json
+        if: steps.heartbeat.outputs.refresh == 'true'
+        run: python fetch.py
+
+      - name: Commit recovered data
+        if: steps.heartbeat.outputs.refresh == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- latest.json; then
+            echo "latest.json is unchanged"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add latest.json
+          git commit -m "Watchdog refresh CNN Fear & Greed data"
+
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "push attempt ${attempt} failed; rebasing and retrying"
+            git pull --rebase origin main
+            sleep $((attempt * 2))
+          done
+
+          echo "git push failed after retries" >&2
+          exit 1

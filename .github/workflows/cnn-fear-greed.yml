@@ -1,0 +1,121 @@
+# Primary CNN Fear & Greed updater
+name: Market Monitor - CNN Fear & Greed
+
+on:
+  schedule:
+    # GitHub's minimum supported schedule interval is 5 minutes.
+    # Poll frequently so one or more dropped schedule events do not make the
+    # category monitor stale for hours.
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - 'monitors/cnn-fear-greed/fetch.py'
+      - '.github/workflows/cnn-fear-greed.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cnn-fear-greed-update
+  cancel-in-progress: true
+
+jobs:
+  update:
+    defaults:
+      run:
+        working-directory: monitors/cnn-fear-greed
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Fetch CNN official data
+        run: python fetch.py
+
+      - name: Suppress unchanged-category commit churn
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import subprocess
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          path = Path("latest.json")
+          new = json.loads(path.read_text(encoding="utf-8"))
+
+          try:
+              old_raw = subprocess.check_output(
+                  ["git", "show", "HEAD:monitors/cnn-fear-greed/latest.json"], text=True
+              )
+              old = json.loads(old_raw)
+          except Exception:
+              raise SystemExit(0)
+
+          # Category changes are the signal we care about, so publish them
+          # immediately. Also publish structural/source changes immediately.
+          material_change = any(
+              old.get(key) != new.get(key)
+              for key in ("category", "ok", "source", "endpoint")
+          )
+          if material_change:
+              print("Material change detected; keep refreshed latest.json")
+              raise SystemExit(0)
+
+          # When the category is unchanged, keep one heartbeat commit per hour
+          # instead of generating up to 288 commits/day merely because
+          # fetched_at changes on every successful poll.
+          try:
+              text = str(old.get("fetched_at", "")).replace("Z", "+00:00")
+              old_fetched = datetime.fromisoformat(text).astimezone(timezone.utc)
+              age = datetime.now(timezone.utc) - old_fetched
+          except Exception:
+              raise SystemExit(0)
+
+          if age.total_seconds() < 3600:
+              subprocess.run(
+                  ["git", "checkout", "HEAD", "--", "latest.json"],
+                  check=True,
+              )
+              print("Category unchanged and heartbeat <1h; skip commit")
+          else:
+              print("Hourly heartbeat due; keep refreshed latest.json")
+          PY
+
+      - name: Commit latest data
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- latest.json; then
+            echo "latest.json is unchanged"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add latest.json
+          git commit -m "Update CNN Fear & Greed data"
+
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "push attempt ${attempt} failed; rebasing and retrying"
+            git pull --rebase origin main
+            sleep $((attempt * 2))
+          done
+
+          echo "git push failed after retries" >&2
+          exit 1
