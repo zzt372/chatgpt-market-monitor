@@ -1,16 +1,14 @@
 {
   "schema_version": 1,
   "ok": true,
-  "checked_at": "2026-10-02T12:39:14.564Z",
+  "checked_at": "2026-10-02T18:26:43.122Z",
   "source_url": "https://reservation.stransa.co.jp/7aad7af9344abd6917921bf71b809583",
   "menu": "痛い、かぶせ物が取れた etc",
   "year": 2026,
   "month": 10,
-  "window_start": "2026-10-02",
+  "window_start": "2026-10-03",
   "window_end": "2026-10-11",
-  "available_dates": [
-    "2026-10-11"
-  ],
+  "available_dates": [],
   "granularity": "date",
   "notes": "Availability is extracted with Playwright from the live reservation calendar. Monitoring covers today through the end of next week in JST (weeks are Monday-Sunday)."
 }
