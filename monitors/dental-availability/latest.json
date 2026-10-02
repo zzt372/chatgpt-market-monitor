@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "ok": true,
-  "checked_at": "2026-10-02T06:19:20.522Z",
+  "checked_at": "2026-10-02T06:21:38.936Z",
   "source_url": "https://reservation.stransa.co.jp/7aad7af9344abd6917921bf71b809583",
   "menu": "痛い、かぶせ物が取れた etc",
   "year": 2026,
@@ -20,25 +20,6 @@
     "2026-10-30",
     "2026-10-31"
   ],
-  "slots": {
-    "11": [
-      "11:00",
-      "11:30",
-      "12:00",
-      "15:00"
-    ],
-    "15": [],
-    "16": [],
-    "19": [],
-    "20": [],
-    "22": [],
-    "23": [],
-    "25": [],
-    "26": [],
-    "29": [],
-    "30": [],
-    "31": []
-  },
-  "granularity": "time",
-  "notes": "Availability is extracted with Playwright from the live reservation UI. Empty slot arrays mean day-level availability was detectable but time buttons were not exposed in the current UI step."
+  "granularity": "date",
+  "notes": "Availability is extracted with Playwright from the live reservation calendar. Monitoring intentionally uses date-level availability only."
 }
