@@ -243,7 +243,15 @@ try {
   page = menuPage;
 
   await page.waitForLoadState("networkidle", { timeout: 12000 }).catch(() => {});
-  await sleep(1000);
+  await sleep(800);
+
+  const otherDates = page.getByRole("button", { name: "他の日時を探す", exact: true }).first();
+  if (await otherDates.isVisible().catch(() => false)) {
+    await otherDates.click({ timeout: 4000 });
+    await page.waitForLoadState("networkidle", { timeout: 12000 }).catch(() => {});
+    await sleep(1000);
+  }
+
   await moveToTargetMonth(page);
 
   const dayControls = await collectDayControls(page);
