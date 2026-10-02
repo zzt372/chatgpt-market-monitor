@@ -42,34 +42,46 @@ async function snapshot(page, note) {
 }
 
 async function clickMenu(page) {
-  const candidates = [
-    page.getByText(MENU, { exact: true }),
-    page.getByText(MENU, { exact: false }),
-    page.locator("label", { hasText: "痛い" }),
-    page.locator("button", { hasText: "痛い" }),
-    page.locator('[role="button"]', { hasText: "痛い" })
-  ];
-  for (const loc of candidates) {
-    const count = await loc.count().catch(() => 0);
-    for (let i = 0; i < count; i++) {
-      const item = loc.nth(i);
-      if (!(await item.isVisible().catch(() => false))) continue;
-      try {
-        await item.click({ timeout: 4000 });
-        await sleep(1200);
-        return true;
-      } catch {}
+  const attemptCurrentPage = async () => {
+    const candidates = [
+      page.getByText(MENU, { exact: true }),
+      page.getByText(MENU, { exact: false }),
+      page.locator("label", { hasText: "痛い" }),
+      page.locator("button", { hasText: "痛い" }),
+      page.locator('[role="button"]', { hasText: "痛い" })
+    ];
+    for (const loc of candidates) {
+      const count = await loc.count().catch(() => 0);
+      for (let i = 0; i < count; i++) {
+        const item = loc.nth(i);
+        if (!(await item.isVisible().catch(() => false))) continue;
+        try {
+          await item.click({ timeout: 4000 });
+          await sleep(1200);
+          return true;
+        } catch {}
+      }
     }
-  }
+    return false;
+  };
 
-  // Radio/checkbox/select fallback based on nearby text.
-  const label = page.locator("label", { hasText: "痛い" }).first();
-  if (await label.count()) {
+  if (await attemptCurrentPage()) return true;
+
+  // The reservation site first asks whether this is an initial or return visit.
+  // Try both branches so the monitor does not depend on a hard-coded patient status.
+  for (const branch of ["再診予約", "初診予約"]) {
+    const branchButton = page.getByRole("button", { name: branch, exact: true }).first();
+    if (!(await branchButton.isVisible().catch(() => false))) continue;
     try {
-      await label.click();
-      await sleep(1200);
-      return true;
+      await branchButton.click({ timeout: 4000 });
+      await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+      await sleep(1000);
+      if (await attemptCurrentPage()) return true;
     } catch {}
+
+    await page.goto(TARGET_URL, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
+    await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+    await sleep(700);
   }
   return false;
 }
