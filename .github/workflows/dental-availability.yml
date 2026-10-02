@@ -51,7 +51,8 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add monitors/dental-availability/latest.json 2>/dev/null || true\n          git add monitors/dental-availability/diagnostic.json 2>/dev/null || true
+          git add monitors/dental-availability/latest.json 2>/dev/null || true
+          git add monitors/dental-availability/diagnostic.json 2>/dev/null || true
           if git diff --cached --quiet; then
             exit 0
           fi
