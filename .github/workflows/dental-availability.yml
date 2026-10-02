@@ -1,0 +1,70 @@
+name: Monitor - Dental Availability
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "monitors/dental-availability/check.mjs"
+      - ".github/workflows/dental-availability.yml"
+  workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dental-availability-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install Playwright
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+
+      - name: Check reservation availability
+        id: check
+        shell: bash
+        run: |
+          set +e
+          node monitors/dental-availability/check.mjs
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Commit latest result or diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add monitors/dental-availability/latest.json monitors/dental-availability/diagnostic.json 2>/dev/null || true
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Update dental availability"
+          for attempt in 1 2 3; do
+            if git push; then exit 0; fi
+            git pull --rebase origin main
+            sleep $((attempt * 2))
+          done
+          exit 1
+
+      - name: Fail if scraper failed
+        if: steps.check.outputs.exit_code != '0'
+        run: |
+          echo "Dental availability scraper failed. See diagnostic.json."
+          exit 1
