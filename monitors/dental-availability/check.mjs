@@ -10,10 +10,6 @@ const DIAG = new URL("./diagnostic.json", import.meta.url);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function safeText(locator) {
-  try { return (await locator.innerText()).trim(); } catch { return ""; }
-}
-
 async function snapshot(page, note) {
   const bodyText = (await page.locator("body").innerText().catch(() => "")).slice(0, 12000);
   const nodes = await page.locator("button, [role=button], a, input, label, select, option").evaluateAll((els) =>
@@ -88,9 +84,6 @@ async function clickMenu(startPage) {
       }
       await branchPage.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
       await sleep(1000);
-
-      const branchText = (await branchPage.locator("body").innerText().catch(() => "")).slice(0, 6000);
-      console.log(`BRANCH ${branch} URL=${branchPage.url()} PAGE:\n${branchText}`);
 
       if (await attemptCurrentPage(branchPage)) return branchPage;
       if (branchPage !== startPage) await branchPage.close().catch(() => {});
@@ -187,33 +180,6 @@ async function collectDayControls(page) {
   return [...byDay.values()].sort((a,b) => a.day-b.day);
 }
 
-async function extractTimesAfterClick(page, day) {
-  const before = page.url();
-  const dayTexts = [String(day), `${day}日`];
-  const clickables = page.locator("button, [role=button], a");
-  const n = await clickables.count();
-  for (let i = 0; i < n; i++) {
-    const el = clickables.nth(i);
-    if (!(await el.isVisible().catch(() => false))) continue;
-    if (await el.isDisabled().catch(() => false)) continue;
-    const txt = (await safeText(el)).replace(/\s+/g, " ");
-    const aria = await el.getAttribute("aria-label").catch(() => "");
-    if (!dayTexts.includes(txt) && !dayTexts.some((x) => (aria || "").trim() === x)) continue;
-    try {
-      await el.click({ timeout: 2000 });
-      await sleep(500);
-      const texts = await page.locator("button, [role=button], a, option, label").allInnerTexts();
-      const times = [...new Set(texts.flatMap((t) => {
-        const ms = t.match(/(?:[01]?\d|2[0-3]):[0-5]\d/g);
-        return ms || [];
-      }))].sort();
-      if (times.length) return times;
-      if (page.url() !== before) await page.goBack({ waitUntil: "domcontentloaded" }).catch(() => {});
-    } catch {}
-  }
-  return [];
-}
-
 const browser = await chromium.launch({ headless: true });
 let page = await browser.newPage({
   locale: "ja-JP",
@@ -263,18 +229,6 @@ try {
     throw new Error(`Calendar recognition failed: only ${dayControls.length} day-like controls`);
   }
 
-  const slots = {};
-  for (const day of available) {
-    slots[String(day)] = await extractTimesAfterClick(page, day);
-    // Return to target view if date click changed state.
-    if (!page.url().startsWith(TARGET_URL)) {
-      await page.goto(TARGET_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
-      const reopened = await clickMenu(page);
-      if (reopened) page = reopened;
-      await moveToTargetMonth(page);
-    }
-  }
-
   const result = {
     schema_version: 1,
     ok: true,
@@ -284,12 +238,10 @@ try {
     year: TARGET_YEAR,
     month: TARGET_MONTH,
     available_dates: available.map((d) => `${TARGET_YEAR}-${String(TARGET_MONTH).padStart(2,"0")}-${String(d).padStart(2,"0")}`),
-    slots,
-    granularity: Object.values(slots).some((v) => v.length) ? "time" : "date",
-    notes: "Availability is extracted with Playwright from the live reservation UI. Empty slot arrays mean day-level availability was detectable but time buttons were not exposed in the current UI step."
+    granularity: "date",
+    notes: "Availability is extracted with Playwright from the live reservation calendar. Monitoring intentionally uses date-level availability only."
   };
   await fs.writeFile(OUT, JSON.stringify(result, null, 2) + "\n", "utf8");
-  await snapshot(page, "success");
   console.log(JSON.stringify(result, null, 2));
 } finally {
   await browser.close();
