@@ -41,14 +41,14 @@ async function snapshot(page, note) {
   return data;
 }
 
-async function clickMenu(page) {
-  const attemptCurrentPage = async () => {
+async function clickMenu(startPage) {
+  const attemptCurrentPage = async (p) => {
     const candidates = [
-      page.getByText(MENU, { exact: true }),
-      page.getByText(MENU, { exact: false }),
-      page.locator("label", { hasText: "痛い" }),
-      page.locator("button", { hasText: "痛い" }),
-      page.locator('[role="button"]', { hasText: "痛い" })
+      p.getByText(MENU, { exact: true }),
+      p.getByText(MENU, { exact: false }),
+      p.locator("label", { hasText: "痛い" }),
+      p.locator("button", { hasText: "痛い" }),
+      p.locator('[role="button"]', { hasText: "痛い" })
     ];
     for (const loc of candidates) {
       const count = await loc.count().catch(() => 0);
@@ -65,27 +65,40 @@ async function clickMenu(page) {
     return false;
   };
 
-  if (await attemptCurrentPage()) return true;
+  if (await attemptCurrentPage(startPage)) return startPage;
 
-  // The reservation site first asks whether this is an initial or return visit.
-  // Try both branches so the monitor does not depend on a hard-coded patient status.
-  for (const branch of ["再診予約", "初診予約"]) {
-    const branchButton = page.getByRole("button", { name: branch, exact: true }).first();
+  for (const branch of ["初診予約", "再診予約"]) {
+    if (startPage.url() !== TARGET_URL) {
+      await startPage.goto(TARGET_URL, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
+      await startPage.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+      await sleep(700);
+    }
+
+    const branchButton = startPage.getByRole("button", { name: branch, exact: true }).first();
     if (!(await branchButton.isVisible().catch(() => false))) continue;
-    try {
-      await branchButton.click({ timeout: 4000 });
-      await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
-      await sleep(1000);
-      const branchText = (await page.locator("body").innerText().catch(() => "")).slice(0, 6000);
-      console.log(`BRANCH ${branch} PAGE:\n${branchText}`);
-      if (await attemptCurrentPage()) return true;
-    } catch {}
 
-    await page.goto(TARGET_URL, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
-    await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
-    await sleep(700);
+    let branchPage = startPage;
+    try {
+      const popupPromise = startPage.waitForEvent("popup", { timeout: 2500 }).catch(() => null);
+      await branchButton.click({ timeout: 4000 });
+      const popup = await popupPromise;
+      if (popup) {
+        branchPage = popup;
+        await branchPage.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
+      }
+      await branchPage.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+      await sleep(1000);
+
+      const branchText = (await branchPage.locator("body").innerText().catch(() => "")).slice(0, 6000);
+      console.log(`BRANCH ${branch} URL=${branchPage.url()} PAGE:\n${branchText}`);
+
+      if (await attemptCurrentPage(branchPage)) return branchPage;
+      if (branchPage !== startPage) await branchPage.close().catch(() => {});
+    } catch {
+      if (branchPage !== startPage) await branchPage.close().catch(() => {});
+    }
   }
-  return false;
+  return null;
 }
 
 async function moveToTargetMonth(page) {
@@ -202,7 +215,7 @@ async function extractTimesAfterClick(page, day) {
 }
 
 const browser = await chromium.launch({ headless: true });
-const page = await browser.newPage({
+let page = await browser.newPage({
   locale: "ja-JP",
   timezoneId: "Asia/Tokyo",
   viewport: { width: 1280, height: 1600 }
@@ -222,10 +235,12 @@ try {
     }
   }
 
-  if (!(await clickMenu(page))) {
+  const menuPage = await clickMenu(page);
+  if (!menuPage) {
     await snapshot(page, "menu-not-found");
     throw new Error(`Menu not found: ${MENU}`);
   }
+  page = menuPage;
 
   await page.waitForLoadState("networkidle", { timeout: 12000 }).catch(() => {});
   await sleep(1000);
@@ -246,7 +261,8 @@ try {
     // Return to target view if date click changed state.
     if (!page.url().startsWith(TARGET_URL)) {
       await page.goto(TARGET_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
-      await clickMenu(page);
+      const reopened = await clickMenu(page);
+      if (reopened) page = reopened;
       await moveToTargetMonth(page);
     }
   }
