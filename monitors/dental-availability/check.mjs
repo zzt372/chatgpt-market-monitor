@@ -76,6 +76,8 @@ async function clickMenu(page) {
       await branchButton.click({ timeout: 4000 });
       await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
       await sleep(1000);
+      const branchText = (await page.locator("body").innerText().catch(() => "")).slice(0, 6000);
+      console.log(`BRANCH ${branch} PAGE:\n${branchText}`);
       if (await attemptCurrentPage()) return true;
     } catch {}
 
