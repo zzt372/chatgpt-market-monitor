@@ -11,6 +11,7 @@ ChatGPTの「マーケット指標監視」タスクで使用する、市場デ�
 | NASDAQ100 Forward P/E | `monitors/nasdaq-forward-pe/latest.json` | Trendonify専用ページのDuckDuckGo Lite検索インデックス |
 | CNN Fear & Greed | `monitors/cnn-fear-greed/latest.json` | CNN公式JSON |
 | NASDAQ100 終値ATHからの下落率 | `monitors/nasdaq-drawdown/drawdown.json` | Nasdaq公式ヒストリカルAPI |
+| 浦和美園かいじゅう歯科 予約空き日 | `monitors/dental-availability/latest.json` | Stransa予約画面（Playwright） |
 
 ## ディレクトリ構成
 
@@ -27,6 +28,9 @@ monitors/
     drawdown.py
     test_drawdown.py
     drawdown.json
+  dental-availability/
+    check.mjs
+    latest.json
 
 .github/workflows/
   nasdaq-forward-pe.yml
@@ -34,6 +38,7 @@ monitors/
   cnn-fear-greed.yml
   cnn-fear-greed-watchdog.yml
   nasdaq-drawdown.yml
+  dental-availability.yml
 ```
 
 ## 運用方針
