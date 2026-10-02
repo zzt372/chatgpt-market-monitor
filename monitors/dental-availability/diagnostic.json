@@ -1,0 +1,108 @@
+{
+  "checked_at": "2026-10-02T06:11:46.316Z",
+  "note": "menu-not-found",
+  "url": "https://reservation.stransa.co.jp/7aad7af9344abd6917921bf71b809583",
+  "title": "浦和美園かいじゅう歯科 Web予約 | Apotool & Box for Dentist",
+  "body_text": "浦和美園かいじゅう歯科\n当院はカウンセリングを重視し、より患者様のご要望に合った治療を提供できるよう心がけております。\n電話\n医院からのメッセージ\n　◎緊急で治療をご希望の方へ◎\r\nご希望日に空きがない場合は、048 799 3123までお電話ください。\r\nご予約の方を優先して治療させていただきますが、急なお痛みなど緊急を要する方は、できる限り当日中に対応させていただきます。\r\nお待ちいただくこと、また応急処置のみになりますことご了承ください。\r\n\r\n　◎初診の方へ◎\r\nWEB問診票へのご回答をお願いしております。事前にお答えいただくか、予約時間の10分前にご来院をお願いいたします。\r\n\r\n　◎キャンセル・予約変更をされる方へ◎\r\nご予約のキャンセル・変更は２日前までにお願いしております。それ以降は048 799 3123までお電話ください。\r\nシステムの特性上、直前のキャンセルが多い方や続いてしまった方は、WEBからのご予約ができなくなる場合がございますのでご注意ください。\r\n\r\n◎ご予約完了後にお時間の変更をお願いする場合がございます。ご迷惑をおかけいたしますがご了承の程よろしくお願いいたします。\r\n\n初診か再診を選択してください\n初めて来院の方\n当院で診察を受けたことがない方\n初診予約\n2回目以降の方\n当院に通院中、または以前診察を受けたことがある方\n再診予約\n浦和美園かいじゅう歯科\n住所\n〒336-0967　埼玉県さいたま市緑区美園5-45-14 シャン エトワール1F\n\n\ngoogle map\n\n\nHP\nhttps://www.urawamisono-kaijyu-dc.com/\n\n\n電話番号\n048-799-3123\n\t日\t月\t火\t水\t木\t金\t土\n9:30-13:00 \r\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\n15:00-19:00/土日14:30-18:00\t\n\t\n\t\n\t\n\t\n\t\n\t\n診療時間\n平日\r\n9:30-13:00 15:00-19:00　\r\n土日\r\n9:30-13:00 14:30-18:00\n\n\n休診日\n水曜日、日曜日or火曜日（隔週休み）、祝日\nトップ\nプライバシーポリシー\n利用規約\n©︎ Apotool & Box",
+  "nodes": [
+    {
+      "tag": "A",
+      "text": "浦和美園かいじゅう歯科",
+      "aria": null,
+      "title": null,
+      "disabled": false,
+      "value": null,
+      "type": null,
+      "name": null,
+      "cls": ""
+    },
+    {
+      "tag": "A",
+      "text": "電話",
+      "aria": null,
+      "title": null,
+      "disabled": false,
+      "value": null,
+      "type": null,
+      "name": null,
+      "cls": "ant-btn ant-btn-text acss-1009qw3"
+    },
+    {
+      "tag": "BUTTON",
+      "text": "初診予約",
+      "aria": null,
+      "title": null,
+      "disabled": false,
+      "value": "",
+      "type": "button",
+      "name": null,
+      "cls": "ant-btn ant-btn-primary ant-btn-lg ant-btn-block"
+    },
+    {
+      "tag": "BUTTON",
+      "text": "再診予約",
+      "aria": null,
+      "title": null,
+      "disabled": false,
+      "value": "",
+      "type": "button",
+      "name": null,
+      "cls": "ant-btn ant-btn-primary ant-btn-lg ant-btn-block"
+    },
+    {
+      "tag": "A",
+      "text": "google map",
+      "aria": null,
+      "title": null,
+      "disabled": false,
+      "value": null,
+      "type": null,
+      "name": null,
+      "cls": ""
+    },
+    {
+      "tag": "A",
+      "text": "https://www.urawamisono-kaijyu-dc.com/",
+      "aria": null,
+      "title": null,
+      "disabled": false,
+      "value": null,
+      "type": null,
+      "name": null,
+      "cls": ""
+    },
+    {
+      "tag": "A",
+      "text": "トップ",
+      "aria": null,
+      "title": null,
+      "disabled": false,
+      "value": null,
+      "type": null,
+      "name": null,
+      "cls": ""
+    },
+    {
+      "tag": "A",
+      "text": "プライバシーポリシー",
+      "aria": null,
+      "title": null,
+      "disabled": false,
+      "value": null,
+      "type": null,
+      "name": null,
+      "cls": ""
+    },
+    {
+      "tag": "A",
+      "text": "利用規約",
+      "aria": null,
+      "title": null,
+      "disabled": false,
+      "value": null,
+      "type": null,
+      "name": null,
+      "cls": ""
+    }
+  ]
+}
