@@ -1,7 +1,7 @@
 import { chromium } from "playwright";
 import fs from "node:fs/promises";
 
-const URL = "https://reservation.stransa.co.jp/7aad7af9344abd6917921bf71b809583";
+const TARGET_URL = "https://reservation.stransa.co.jp/7aad7af9344abd6917921bf71b809583";
 const MENU = "痛い、かぶせ物が取れた etc";
 const TARGET_YEAR = 2026;
 const TARGET_MONTH = 10;
@@ -195,7 +195,7 @@ const page = await browser.newPage({
 });
 
 try {
-  await page.goto(URL, { waitUntil: "domcontentloaded", timeout: 60000 });
+  await page.goto(TARGET_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
   await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
   await sleep(1200);
 
@@ -230,8 +230,8 @@ try {
   for (const day of available) {
     slots[String(day)] = await extractTimesAfterClick(page, day);
     // Return to target view if date click changed state.
-    if (!page.url().startsWith(URL)) {
-      await page.goto(URL, { waitUntil: "domcontentloaded", timeout: 60000 });
+    if (!page.url().startsWith(TARGET_URL)) {
+      await page.goto(TARGET_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
       await clickMenu(page);
       await moveToTargetMonth(page);
     }
@@ -241,7 +241,7 @@ try {
     schema_version: 1,
     ok: true,
     checked_at: new Date().toISOString(),
-    source_url: URL,
+    source_url: TARGET_URL,
     menu: MENU,
     year: TARGET_YEAR,
     month: TARGET_MONTH,
