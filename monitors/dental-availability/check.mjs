@@ -10,6 +10,34 @@ const DIAG = new URL("./diagnostic.json", import.meta.url);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+function currentAndNextWeekWindowJst() {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short"
+  }).formatToParts(now);
+  const get = (type) => parts.find((p) => p.type === type)?.value;
+  const y = Number(get("year"));
+  const m = Number(get("month"));
+  const d = Number(get("day"));
+  const weekday = get("weekday");
+  const weekdayIndex = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[weekday];
+
+  // Treat a week as Monday-Sunday. Monitor from today through the end of next week.
+  const todayUtc = new Date(Date.UTC(y, m - 1, d));
+  const daysSinceMonday = (weekdayIndex + 6) % 7;
+  const thisMonday = new Date(todayUtc);
+  thisMonday.setUTCDate(thisMonday.getUTCDate() - daysSinceMonday);
+  const nextSunday = new Date(thisMonday);
+  nextSunday.setUTCDate(thisMonday.getUTCDate() + 13);
+
+  const fmt = (dt) => dt.toISOString().slice(0, 10);
+  return { start: fmt(todayUtc), end: fmt(nextSunday) };
+}
+
 async function snapshot(page, note) {
   const bodyText = (await page.locator("body").innerText().catch(() => "")).slice(0, 12000);
   const nodes = await page.locator("button, [role=button], a, input, label, select, option").evaluateAll((els) =>
@@ -229,6 +257,10 @@ try {
     throw new Error(`Calendar recognition failed: only ${dayControls.length} day-like controls`);
   }
 
+  const window = currentAndNextWeekWindowJst();
+  const allAvailableDates = available.map((d) => `${TARGET_YEAR}-${String(TARGET_MONTH).padStart(2,"0")}-${String(d).padStart(2,"0")}`);
+  const filteredAvailableDates = allAvailableDates.filter((date) => date >= window.start && date <= window.end);
+
   const result = {
     schema_version: 1,
     ok: true,
@@ -237,9 +269,11 @@ try {
     menu: MENU,
     year: TARGET_YEAR,
     month: TARGET_MONTH,
-    available_dates: available.map((d) => `${TARGET_YEAR}-${String(TARGET_MONTH).padStart(2,"0")}-${String(d).padStart(2,"0")}`),
+    window_start: window.start,
+    window_end: window.end,
+    available_dates: filteredAvailableDates,
     granularity: "date",
-    notes: "Availability is extracted with Playwright from the live reservation calendar. Monitoring intentionally uses date-level availability only."
+    notes: "Availability is extracted with Playwright from the live reservation calendar. Monitoring covers today through the end of next week in JST (weeks are Monday-Sunday)."
   };
   await fs.writeFile(OUT, JSON.stringify(result, null, 2) + "\n", "utf8");
   console.log(JSON.stringify(result, null, 2));
