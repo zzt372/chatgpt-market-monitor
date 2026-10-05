@@ -8,7 +8,7 @@
   "ath_date": "2026-10-02",
   "drawdown_pct": 0.0,
   "total_records": 7809,
-  "fetched_at": "2026-10-05T00:51:53.785455Z",
+  "fetched_at": "2026-10-05T06:58:04.279665Z",
   "source": "Nasdaq official API",
   "source_endpoint": "https://api.nasdaq.com/api/quote/NDX/historical",
   "source_kind": "official-historical-close",
