@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "ok": true,
-  "checked_at": "2026-10-05T22:39:48.955Z",
+  "checked_at": "2026-10-06T03:01:13.599Z",
   "source_url": "https://reservation.stransa.co.jp/7aad7af9344abd6917921bf71b809583",
   "menu": "痛い、かぶせ物が取れた etc",
   "year": 2026,
@@ -9,7 +9,6 @@
   "window_start": "2026-10-06",
   "window_end": "2026-10-18",
   "available_dates": [
-    "2026-10-15",
     "2026-10-16"
   ],
   "granularity": "date",
