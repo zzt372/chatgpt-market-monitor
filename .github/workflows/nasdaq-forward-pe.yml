@@ -5,7 +5,9 @@ on:
     branches: [main]
     paths:
       - "monitors/nasdaq-forward-pe/fetch.py"
+      - "monitors/nasdaq-forward-pe/direct_source.py"
       - "monitors/nasdaq-forward-pe/test_fetch.py"
+      - "monitors/nasdaq-forward-pe/test_direct_source.py"
       - ".github/workflows/nasdaq-forward-pe.yml"
   workflow_dispatch:
   schedule:
@@ -39,7 +41,7 @@ jobs:
           python-version: "3.12"
 
       - name: Run regression tests
-        run: python -m unittest -v test_fetch.py
+        run: python -m unittest -v test_fetch.py test_direct_source.py
 
       # One search request per fresh runner. Repeated queries from the same runner
       # can provoke DuckDuckGo HTTP 202 / anti-bot responses.
