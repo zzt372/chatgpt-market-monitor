@@ -15,6 +15,7 @@ from pathlib import Path
 
 from fetch import parse_utc_timestamp, validate_payload
 
+# The producer's fetched_at is never advanced unless acquisition succeeded.
 ROOT = Path(__file__).resolve().parents[2]
 FILE = ROOT / "monitors/nasdaq-forward-pe/latest.json"
 GIT_PATH = "monitors/nasdaq-forward-pe/latest.json"
