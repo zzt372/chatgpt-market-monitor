@@ -5,7 +5,9 @@ on:
     branches: [main]
     paths:
       - "monitors/nasdaq-forward-pe/fetch.py"
+      - "monitors/nasdaq-forward-pe/direct_source.py"
       - "monitors/nasdaq-forward-pe/test_fetch.py"
+      - "monitors/nasdaq-forward-pe/test_direct_source.py"
       - ".github/workflows/nasdaq-forward-pe-watchdog.yml"
   workflow_dispatch:
   schedule:
@@ -49,7 +51,7 @@ jobs:
 
       - name: Run regression tests before recovery
         if: steps.freshness.outputs.stale == 'true'
-        run: python -m unittest -v test_fetch.py
+        run: python -m unittest -v test_fetch.py test_direct_source.py
 
       - name: Recover latest.json
         if: steps.freshness.outputs.stale == 'true'
