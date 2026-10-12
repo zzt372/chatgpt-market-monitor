@@ -9,6 +9,8 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from urllib.parse import quote_plus
 from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
+from direct_source import parse_official_page
 
 ROOT = Path(__file__).resolve().parent
 LATEST = ROOT / "latest.json"
@@ -17,6 +19,13 @@ SEARCH_QUERY = 'Trendonify "NASDAQ-100 Forward PE Ratio" percentile'
 SEARCH_URL = "https://lite.duckduckgo.com/lite/?q=" + quote_plus(SEARCH_QUERY)
 SOURCE_KIND = "dedicated-forward-pe-search-index"
 FETCH_METHOD = "duckduckgo-lite"
+DIRECT_FETCH_METHOD = "trendonify-direct"
+DIRECT_SOURCE_KIND = "dedicated-forward-pe-page"
+DIRECT_URL = "https://api.trendonify.com/united-states/stock-market/nasdaq-100/forward-pe-ratio"
+ACCEPTED_METHODS = {
+    ("dedicated-forward-pe-search-index", "duckduckgo-lite"),
+    ("dedicated-forward-pe-page", "trendonify-direct"),
+}
 SCHEMA_VERSION = 2
 MAX_DATA_AGE_DAYS = 7
 MAX_RESPONSE_BYTES = 500_000
@@ -238,10 +247,8 @@ def validate_payload(payload, max_fetch_age_seconds=None, now=None):
         raise ValueError("source mismatch")
     if payload.get("source_url") != DEDICATED:
         raise ValueError("source_url mismatch")
-    if payload.get("source_kind") != SOURCE_KIND:
-        raise ValueError("source_kind mismatch")
-    if payload.get("fetch_method") != FETCH_METHOD:
-        raise ValueError("fetch_method mismatch")
+    if (payload.get("source_kind"), payload.get("fetch_method")) not in ACCEPTED_METHODS:
+        raise ValueError("source_kind/fetch_method mismatch")
 
     current = now or utcnow()
     validate_values(
@@ -281,7 +288,32 @@ def fetch_once():
     return raw
 
 
-def build_payload(forward_pe, percentile, data_date, fetched_at=None):
+def fetch_direct_once():
+    """Fetch exactly the dedicated public Trendonify page. No proxies."""
+    req = Request(
+        DIRECT_URL,
+        headers={
+            "User-Agent": HEADERS["User-Agent"],
+            "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Cache-Control": "no-cache",
+        },
+    )
+    with urlopen(req, timeout=25) as response:
+        if response.status != 200:
+            raise RuntimeError(f"official page HTTP {response.status}")
+        final = urlsplit(response.geturl())
+        if final.scheme != "https" or final.hostname != "api.trendonify.com" or final.path != urlsplit(DIRECT_URL).path:
+            raise RuntimeError("official page redirect outside dedicated source")
+        if "text/html" not in response.headers.get("Content-Type", "").lower():
+            raise RuntimeError("official page content type mismatch")
+        raw = response.read(MAX_RESPONSE_BYTES + 1)
+    if len(raw) > MAX_RESPONSE_BYTES:
+        raise RuntimeError("official page response too large")
+    return raw.decode("utf-8", "replace")
+
+
+def build_payload(forward_pe, percentile, data_date, fetched_at=None, source_kind=SOURCE_KIND, fetch_method=FETCH_METHOD):
     stamp = fetched_at or utcnow()
     return {
         "schema_version": SCHEMA_VERSION,
@@ -292,8 +324,8 @@ def build_payload(forward_pe, percentile, data_date, fetched_at=None):
         "fetched_at": stamp.isoformat().replace("+00:00", "Z"),
         "source": "Trendonify",
         "source_url": DEDICATED,
-        "source_kind": SOURCE_KIND,
-        "fetch_method": FETCH_METHOD,
+        "source_kind": source_kind,
+        "fetch_method": fetch_method,
     }
 
 
@@ -318,26 +350,29 @@ def run_fetch():
         except Exception:
             pass
 
-    raw = fetch_once()
-    try:
-        forward_pe, percentile, data_date = parse_search_index(raw)
-    except Exception:
-        # Keep a narrow, public search-index excerpt in Actions logs so future
-        # result-format changes can be diagnosed without dumping the whole page.
-        text = textify(raw)
-        exact_url = "trendonify.com/united-states/stock-market/nasdaq-100/forward-pe-ratio"
-        pos = text.lower().find(exact_url)
-        if pos >= 0:
-            context = text[max(0, pos - 800): min(len(text), pos + 2600)]
-            print(f"SEARCH_INDEX_CONTEXT: {context}", file=sys.stderr)
-        raise
-    validate_values(forward_pe, percentile, data_date, previous_date=previous_date)
-    validate_transition(forward_pe, percentile, data_date, previous)
-    payload = build_payload(forward_pe, percentile, data_date)
-    validate_payload(payload, max_fetch_age_seconds=60)
-    write_atomic(payload)
-    print(json.dumps(payload))
+    errors = []
+    candidates = [
+        ("official-dedicated-page", fetch_direct_once, parse_official_page, DIRECT_SOURCE_KIND, DIRECT_FETCH_METHOD),
+        ("duckduckgo-lite-dedicated-index", fetch_once, parse_search_index, SOURCE_KIND, FETCH_METHOD),
+    ]
+    for label, acquire, parser, kind, method in candidates:
+        try:
+            raw = acquire()
+            pe, percentile, data_date = parser(raw)
+            validate_values(pe, percentile, data_date, previous_date=previous_date)
+            validate_transition(pe, percentile, data_date, previous)
+            payload = build_payload(pe, percentile, data_date, source_kind=kind, fetch_method=method)
+            validate_payload(payload, max_fetch_age_seconds=60)
+            write_atomic(payload)
+            print(f"Acquisition succeeded: {label}", file=sys.stderr)
+            print(json.dumps(payload))
+            return
+        except Exception as exc:
+            errors.append(f"{label}: {type(exc).__name__}: {exc}")
+            print(f"Acquisition failed: {errors[-1]}", file=sys.stderr)
 
+    # Do not overwrite the last known good file or pretend an old fetch is fresh.
+    raise RuntimeError("all independent acquisition methods failed: " + " | ".join(errors))
 
 def main(argv=None):
     parser = argparse.ArgumentParser()
