@@ -1,5 +1,5 @@
 {
-  "probe_at": "2026-10-12T00:53:19.274462+00:00",
+  "probe_at": "2026-10-12T00:54:45.742274+00:00",
   "results": [
     {
       "host": "trendonify.com",
@@ -26,5 +26,22 @@
       "bot_challenge": false,
       "head_excerpt": "Trendonify \"NASDAQ-100 Forward PE Ratio\" percentile at DuckDuckGo DuckDuckGo All Regions Argentina Australia Austria Belgium (fr) Belgium (nl) Brazil Bulgaria Canada (en) Canada (fr) Catalonia Chile China Colombia Croatia Czech Republic Denmark Estonia Finland France Germany Greece Hong Kong Hungary"
     }
-  ]
+  ],
+  "direct_parsed": [
+    21.41,
+    36.7,
+    "2026-10-09"
+  ],
+  "dry_run_latest": {
+    "schema_version": 2,
+    "ok": true,
+    "forward_pe": 21.41,
+    "percentile_10y": 36.7,
+    "data_date": "2026-10-09",
+    "fetched_at": "2026-10-11T09:14:34.473890Z",
+    "source": "Trendonify",
+    "source_url": "https://trendonify.com/united-states/stock-market/nasdaq-100/forward-pe-ratio",
+    "source_kind": "dedicated-forward-pe-search-index",
+    "fetch_method": "duckduckgo-lite"
+  }
 }
