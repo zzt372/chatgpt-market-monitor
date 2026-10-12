@@ -4,6 +4,10 @@ on:
     branches: ['fix/nasdaq-forward-pe-reliability-20261012']
     paths:
       - 'monitors/nasdaq-forward-pe/probe_direct.py'
+      - 'monitors/nasdaq-forward-pe/direct_source.py'
+      - 'monitors/nasdaq-forward-pe/fetch.py'
+      - 'monitors/nasdaq-forward-pe/test_fetch.py'
+      - 'monitors/nasdaq-forward-pe/test_direct_source.py'
       - '.github/workflows/forward-pe-probe.yml'
   workflow_dispatch:
 permissions:
@@ -19,6 +23,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Run regression and security tests
+        working-directory: monitors/nasdaq-forward-pe
+        run: python -m unittest -v test_fetch.py test_direct_source.py
+      - name: Dry-run producer against live source
+        working-directory: monitors/nasdaq-forward-pe
+        run: |
+          python fetch.py
+          python fetch.py --check-latest --max-fetch-age-seconds 120
       - name: Probe official hosts and search
         run: python monitors/nasdaq-forward-pe/probe_direct.py
       - name: Save probe report in test branch
