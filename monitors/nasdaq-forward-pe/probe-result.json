@@ -1,0 +1,30 @@
+{
+  "probe_at": "2026-10-12T00:53:19.274462+00:00",
+  "results": [
+    {
+      "host": "trendonify.com",
+      "status": 403,
+      "error": "HTTP Error 403: Forbidden"
+    },
+    {
+      "host": "api.trendonify.com",
+      "status": 200,
+      "content_type": "text/html",
+      "bytes": 189431,
+      "contains_dedicated_identity": true,
+      "contains_known_value": true,
+      "bot_challenge": false,
+      "head_excerpt": "(function(){const defaultTheme = \"system\"; function applyTheme(theme) { if (theme === 'dark') { document.documentElement.classList.add('dark'); document.documentElement.classList.add('cc--darkmode'); } else { document.documentElement.classList.remove('dark'); document.documentElement.classList.remov"
+    },
+    {
+      "host": "lite.duckduckgo.com",
+      "status": 200,
+      "content_type": "text/html; charset=UTF-8",
+      "bytes": 9685,
+      "contains_dedicated_identity": true,
+      "contains_known_value": false,
+      "bot_challenge": false,
+      "head_excerpt": "Trendonify \"NASDAQ-100 Forward PE Ratio\" percentile at DuckDuckGo DuckDuckGo All Regions Argentina Australia Austria Belgium (fr) Belgium (nl) Brazil Bulgaria Canada (en) Canada (fr) Catalonia Chile China Colombia Croatia Czech Republic Denmark Estonia Finland France Germany Greece Hong Kong Hungary"
+    }
+  ]
+}
