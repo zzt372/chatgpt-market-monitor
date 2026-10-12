@@ -341,6 +341,7 @@ def check_latest(max_fetch_age_seconds):
     print(f"latest.json healthy; fetched_age_seconds={age:.0f}")
 
 
+# Safety: only a freshly parsed and validated upstream response can advance fetched_at.
 def run_fetch():
     previous = load_previous()
     previous_date = None
