@@ -6,6 +6,8 @@ on:
     paths:
       - "monitors/nasdaq-forward-pe/fetch.py"
       - "monitors/nasdaq-forward-pe/direct_source.py"
+      - "monitors/nasdaq-forward-pe/publish.py"
+      - "monitors/nasdaq-forward-pe/test_publish.py"
       - "monitors/nasdaq-forward-pe/test_fetch.py"
       - "monitors/nasdaq-forward-pe/test_direct_source.py"
       - ".github/workflows/nasdaq-forward-pe-watchdog.yml"
@@ -51,7 +53,7 @@ jobs:
 
       - name: Run regression tests before recovery
         if: steps.freshness.outputs.stale == 'true'
-        run: python -m unittest -v test_fetch.py test_direct_source.py
+        run: python -m unittest -v test_fetch.py test_direct_source.py test_publish.py
 
       - name: Recover latest.json
         if: steps.freshness.outputs.stale == 'true'
@@ -61,25 +63,6 @@ jobs:
         if: steps.freshness.outputs.stale == 'true'
         run: python fetch.py --check-latest --max-fetch-age-seconds 120
 
-      - name: Commit recovered state
+      - name: Publish validated recovered state
         if: steps.freshness.outputs.stale == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add latest.json
-          if git diff --cached --quiet; then
-            exit 0
-          fi
-          git commit -m "Watchdog refresh Nasdaq 100 forward P/E"
-
-          for attempt in 1 2 3; do
-            if git push; then
-              exit 0
-            fi
-            echo "push failed; retry ${attempt}/3"
-            git pull --rebase origin main
-            sleep $((attempt * 2))
-          done
-          exit 1
+        run: python publish.py

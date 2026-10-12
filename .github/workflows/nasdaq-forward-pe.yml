@@ -6,6 +6,8 @@ on:
     paths:
       - "monitors/nasdaq-forward-pe/fetch.py"
       - "monitors/nasdaq-forward-pe/direct_source.py"
+      - "monitors/nasdaq-forward-pe/publish.py"
+      - "monitors/nasdaq-forward-pe/test_publish.py"
       - "monitors/nasdaq-forward-pe/test_fetch.py"
       - "monitors/nasdaq-forward-pe/test_direct_source.py"
       - ".github/workflows/nasdaq-forward-pe.yml"
@@ -41,7 +43,7 @@ jobs:
           python-version: "3.12"
 
       - name: Run regression tests
-        run: python -m unittest -v test_fetch.py test_direct_source.py
+        run: python -m unittest -v test_fetch.py test_direct_source.py test_publish.py
 
       # One search request per fresh runner. Repeated queries from the same runner
       # can provoke DuckDuckGo HTTP 202 / anti-bot responses.
@@ -89,22 +91,6 @@ jobs:
           PY
           echo "needed=$(cat /tmp/needed)" >> "$GITHUB_OUTPUT"
 
-      - name: Commit latest.json
+      - name: Publish validated latest.json
         if: steps.decide.outputs.needed == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add latest.json
-          git commit -m "Update Nasdaq 100 forward P/E"
-
-          for attempt in 1 2 3; do
-            if git push; then
-              exit 0
-            fi
-            echo "push failed; retry ${attempt}/3"
-            git pull --rebase origin main
-            sleep $((attempt * 2))
-          done
-          exit 1
+        run: python publish.py
