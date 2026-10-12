@@ -11,6 +11,17 @@ URLS = [
     "https://lite.duckduckgo.com/lite/?q=" + quote_plus('Trendonify "NASDAQ-100 Forward PE Ratio" percentile'),
 ]
 output = {"probe_at": datetime.now(timezone.utc).isoformat(), "results": []}
+try:
+    from direct_source import parse_official_page
+    from fetch import fetch_direct_once
+    output["direct_parsed"] = list(parse_official_page(fetch_direct_once()))
+except Exception as exc:
+    output["direct_parse_error"] = type(exc).__name__ + ": " + str(exc)[:400]
+try:
+    with open("monitors/nasdaq-forward-pe/latest.json",encoding="utf-8") as f:
+        output["dry_run_latest"] = json.load(f)
+except Exception as exc:
+    output["dry_run_latest_error"] = type(exc).__name__ + ": " + str(exc)[:200]
 for url in URLS:
     item = {"host": url.split("/")[2]}
     try:
