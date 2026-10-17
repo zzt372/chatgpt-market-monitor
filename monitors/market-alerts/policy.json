@@ -1,5 +1,5 @@
 {
-  "policy_version": 1,
+  "policy_version": 2,
   "purpose": "Market drawdown monitoring; notifications are review prompts, not automatic trade orders.",
   "reference": {
     "price": "daily close",
@@ -8,8 +8,18 @@
     "threshold_comparison": "Use the unrounded value. A level is reached when drawdown is less than or equal to its negative threshold."
   },
   "thresholds_pct": {
-    "NDX": [-10, -15, -20, -25],
-    "SOX": [-20, -25, -30, -35]
+    "NDX": [
+      -10,
+      -15,
+      -20,
+      -25
+    ],
+    "SOX": [
+      -20,
+      -25,
+      -30,
+      -35
+    ]
   },
   "episode_reset_drawdown_pct": -5,
   "max_fetch_age_seconds": 10800,
@@ -27,11 +37,36 @@
     "NASDAQ100とSOXを別々に判定し、永続状態も別々に保存する。基準は各指数の直近252取引日の最高終値で、ATHや日中高値を代用しない。",
     "NASDAQ100は-10/-15/-20/-25%、SOXは-20/-25/-30/-35%の4段階とし、それより深い下落で追加の段階通知は出さない。表示の丸め値で閾値を判定しない。",
     "初回導入は最新の有効な観測をbaselineとして保存する。その時点で到達済みの段階は通知済み扱いにし、過去の下落を新規到達として通知しない。既存状態が読めない・壊れている場合は初回とみなさず、その指数の判定を止めて状態の復旧を行う。",
-    "同じepisodeで同じ段階を繰り返し通知しない。一時的にその段階より回復しても通知履歴を消さない。下落率が-5%以上に回復した新しい観測でepisodeを終了し、その後の下落を別episodeとする。252日の基準高値が窓から外れたことによる回復も、このルール上はepisode終了に含む。",
+    "同じepisodeで同じ段階を繰り返し通知しない。通常は252日比-5%以上に回復し、前回観測の252日最高終値に対しても-5%以上なら履歴をリセットする。高値の窓落ちによってのみ-5%以内になった場合はリセットせず、その日の終値×1.05を固定の回復確認目標として保留する。保留中は252日比-5%以上かつ終値が固定目標以上でリセットし、高値が再び窓落ちしても目標を下げない。再び252日比-5%未満に下落したら保留目標だけ解除し、通知履歴を保持する。",
     "一度に複数段階を通過した場合は最も深い到達段階を1件通知し、通過した全段階を通知済みとして記録する。指数が両方該当した場合は、同じ実行の1通の本文にまとめてもよいが、指数ごとの条件と履歴を混同しない。",
     "有効なcurrent_dateが前回以下なら、再実行・同日修正・過去データで新規通知せず、前回状態を保持する。無効・古い・未来のデータで状態を進めず、取得エラーを0%回復とみなさない。",
-    "通知本文に指数名、対象日、現在の終値、基準高値と日付、高値からの下落率、今回の到達段階を記載する。Fear & Greedの最新有効な値を補足し、AND条件にはしない。",
+    "通知本文には、指数名、対象日、確定終値、直近252取引日最高終値と日付、252日比の下落率（通知判定）、今回の到達段階、全履歴最高終値と日付、ATH比の下落率（参考）を必ず併記する。ATH比は通知条件や再通知条件に使用しない。Fear & Greedの最新有効な値を補足し、AND条件にはしない。",
     "Fear & Greed単独のカテゴリ変化通知は既存ルールを維持し、予想PERの取得・判定・障害通知は行わない。",
-    "条件に新たな到達がなければ定例の状況報告は出さない。判定結果と未送信イベントを永続化してから配信し、指数・episode・段階で配信を重複排除する。配信失敗は未送信として保持し、状態ファイル欠損や再実行で過去イベントを新規作成しない。"
-  ]
+    "条件に新たな到達がなければ定例の状況報告は出さない。判定結果と未送信イベントを永続化してから配信し、指数・episode・段階で配信を重複排除する。配信失敗は未送信として保持し、状態ファイル欠損や再実行で過去イベントを新規作成しない。",
+    "state schema/policy v1からv2への移行時は既存episodeと通知済み段階を維持する。前回高値不明のため移行観測だけで履歴をリセットせず、既に-5%圏内なら移行日の終値×1.05を固定回復目標として保留する。正常な新しい取引日に深い未通知段階へ達していればその通知は継続し、同日や過去日付では新しい通知を作らない。"
+  ],
+  "state_schema_version": 2,
+  "window_recovery_confirmation_pct": 5,
+  "episode_reset": {
+    "normal_recovery": "When rolling drawdown is at least -5%, also compare the current close with 95% of the previous observation rolling high. If recovered by that unchanged reference, reset the active episode.",
+    "window_expiry": "If the rolling drawdown is at least -5% only after the high drops, retain the notification history and set a fixed recovery_target_close to current_close * 1.05. Do not reset on this observation.",
+    "pending_recovery": "While rolling drawdown stays at least -5%, reset only when current_close reaches the fixed recovery_target_close. Never lower that target because another high expires.",
+    "renewed_decline": "If rolling drawdown falls below -5% again, clear only the recovery target, keep notified thresholds, and reassess the next recovery.",
+    "migration": "Preserve v1 episode IDs and notified thresholds. Seed the previous rolling high from the first valid v2 observation and never reset during that migration. If an active episode is already within -5%, set current_close * 1.05 as the fixed recovery target. New stages on genuinely later market dates may still notify; same or older dates may not.",
+    "rationale": "The 5% confirmation is an operational filter against reset caused solely by window expiry; it is not a return-optimized parameter."
+  },
+  "notification_context": {
+    "decision": "rolling_drawdown_pct",
+    "required_fields": [
+      "current_close",
+      "current_date",
+      "rolling_high_close",
+      "rolling_high_date",
+      "rolling_drawdown_pct",
+      "ath_close",
+      "ath_date",
+      "ath_drawdown_pct"
+    ],
+    "ath_role": "Display all-history highest closing price, date and drawdown as reference only, labeled ATH reference. Recompute ath_drawdown_pct from current_close/ath_close; existing producer drawdown_pct remains ATH-compatible. ATH does not gate alerts or rearming."
+  }
 }

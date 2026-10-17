@@ -1,5 +1,6 @@
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 import json
 from pathlib import Path
 import unittest
@@ -10,19 +11,33 @@ from alerts import evaluate_observation
 NOW = datetime(2026, 10, 18, 8, tzinfo=timezone.utc)
 
 
-def observation(drawdown, day="2026-10-16", symbol="NDX"):
+def observation(drawdown, day="2026-10-16", symbol="NDX", *, high=100, ath=None):
+    current = float(Decimal(str(high)) * (1 + Decimal(str(drawdown)) / 100))
+    ath = max(high, 100) if ath is None else ath
     return {
         "schema_version": 2,
         "symbol": symbol,
         "ok": True,
         "current_date": day,
-        "current_close": 100 * (1 + drawdown / 100),
+        "current_close": current,
         "window_sessions": 252,
-        "rolling_high_close": 100,
+        "rolling_high_close": high,
         "rolling_high_date": "2026-09-01",
         "rolling_drawdown_pct": drawdown,
+        "ath_close": ath,
+        "ath_date": "2026-01-02",
+        "drawdown_pct": round((current / ath - 1) * 100, 4),
         "fetched_at": NOW.isoformat(),
     }
+
+
+def legacy_state(state):
+    result = deepcopy(state)
+    result["schema_version"] = 1
+    result["policy_version"] = 1
+    result.pop("last_rolling_high_close", None)
+    result.pop("recovery_target_close", None)
+    return result
 
 
 class AlertTests(unittest.TestCase):
@@ -65,6 +80,144 @@ class AlertTests(unittest.TestCase):
         result = self.evaluate(observation(-16, "2026-10-16"), reset["state"])
         self.assertEqual(result["notification"]["threshold_pct"], -15)
         self.assertEqual(result["state"]["episode_id"], 2)
+
+    def test_flat_price_and_expiring_high_require_real_recovery(self):
+        initial = self.evaluate(observation(-10, "2026-10-14"))["state"]
+        result = self.evaluate(observation(0, "2026-10-15", high=90), initial)
+        self.assertEqual(result["status"], "recovery_pending")
+        self.assertIsNone(result["notification"])
+        self.assertEqual(result["state"]["recovery_target_close"], 94.5)
+        self.assertEqual(result["state"]["last_rolling_high_close"], 90)
+        self.assertEqual(result["state"]["notified_thresholds_pct"], [-10])
+        self.assertTrue(result["state"]["episode_active"])
+
+    def test_past_rebound_does_not_allow_window_expiry_alone_to_reset(self):
+        initial = self.evaluate(observation(-40, "2026-10-12"))["state"]
+        rebounded = self.evaluate(observation(-30, "2026-10-13"), initial)["state"]
+        result = self.evaluate(observation(0, "2026-10-14", high=70), rebounded)
+        self.assertEqual(result["status"], "recovery_pending")
+        self.assertEqual(result["state"]["recovery_target_close"], 73.5)
+        self.assertEqual(result["state"]["notified_thresholds_pct"],
+                         [-10, -15, -20, -25])
+        self.assertEqual(result["state"]["episode_id"], initial["episode_id"])
+
+    def test_pending_recovery_target_does_not_fall_with_window_high(self):
+        initial = self.evaluate(observation(-10, "2026-10-14"))["state"]
+        pending = self.evaluate(observation(0, "2026-10-15", high=90), initial)["state"]
+        result = self.evaluate(observation(-1, "2026-10-16", high=89), pending)
+        self.assertEqual(result["state"]["recovery_target_close"], 94.5)
+        self.assertEqual(result["state"]["last_rolling_high_close"], 89)
+        self.assertTrue(result["state"]["episode_active"])
+        self.assertIsNone(result["notification"])
+
+    def test_pending_reset_requires_full_five_percent_recovery(self):
+        initial = self.evaluate(observation(-10, "2026-10-14"))["state"]
+        pending = self.evaluate(observation(0, "2026-10-15", high=90), initial)["state"]
+        almost = self.evaluate(observation(0, "2026-10-16", high=94.4999), pending)
+        self.assertTrue(almost["state"]["episode_active"])
+        self.assertEqual(almost["state"]["recovery_target_close"], 94.5)
+        result = self.evaluate(observation(0, "2026-10-17", high=94.5), almost["state"])
+        self.assertEqual(result["status"], "reset")
+        self.assertFalse(result["state"]["episode_active"])
+        self.assertEqual(result["state"]["notified_thresholds_pct"], [])
+        self.assertIsNone(result["state"]["recovery_target_close"])
+
+    def test_leaving_recovery_zone_clears_target_but_keeps_history(self):
+        initial = self.evaluate(observation(-10, "2026-10-14"))["state"]
+        pending = self.evaluate(observation(0, "2026-10-15", high=90), initial)["state"]
+        fallen = self.evaluate(observation(-12, "2026-10-16", high=90), pending)
+        self.assertIsNone(fallen["state"]["recovery_target_close"])
+        self.assertTrue(fallen["state"]["episode_active"])
+        self.assertEqual(fallen["state"]["notified_thresholds_pct"], [-10])
+        self.assertIsNone(fallen["notification"])
+        recovered = self.evaluate(observation(-5, "2026-10-17", high=90), fallen["state"])
+        self.assertEqual(recovered["status"], "reset")
+        self.assertFalse(recovered["state"]["episode_active"])
+
+    def test_reaching_pending_price_without_recovery_zone_does_not_reset(self):
+        initial = self.evaluate(observation(-10, "2026-10-14"))["state"]
+        pending = self.evaluate(observation(0, "2026-10-15", high=90), initial)["state"]
+        result = self.evaluate(observation(-10, "2026-10-16", high=105), pending)
+        self.assertEqual(result["state"]["last_drawdown_pct"], -10)
+        self.assertTrue(result["state"]["episode_active"])
+        self.assertEqual(result["state"]["notified_thresholds_pct"], [-10])
+        self.assertIsNone(result["state"]["recovery_target_close"])
+        self.assertIsNone(result["notification"])
+
+    def test_v1_migration_into_recovery_zone_never_resets_immediately(self):
+        initial = legacy_state(self.evaluate(observation(-16, "2026-10-14"))["state"])
+        original = deepcopy(initial)
+        for day in ("2026-10-14", "2026-10-15"):
+            with self.subTest(day=day):
+                result = self.evaluate(observation(0, day, high=84), initial)
+                self.assertEqual(result["status"], "migrated")
+                self.assertEqual(result["state"]["schema_version"], 2)
+                self.assertEqual(result["state"]["policy_version"], 2)
+                self.assertEqual(result["state"]["episode_id"], initial["episode_id"])
+                self.assertEqual(result["state"]["notified_thresholds_pct"], [-10, -15])
+                self.assertEqual(result["state"]["last_rolling_high_close"], 84)
+                self.assertEqual(result["state"]["recovery_target_close"], 88.2)
+                self.assertTrue(result["state"]["episode_active"])
+                self.assertIsNone(result["notification"])
+                self.assertEqual(initial, original)
+
+    def test_v1_new_day_migration_can_notify_a_new_deeper_stage(self):
+        initial = legacy_state(self.evaluate(observation(-12, "2026-10-14"))["state"])
+        result = self.evaluate(observation(-22, "2026-10-15"), initial)
+        self.assertEqual(result["status"], "alert")
+        self.assertEqual(result["notification"]["threshold_pct"], -20)
+        self.assertEqual(result["state"]["notified_thresholds_pct"], [-10, -15, -20])
+        self.assertEqual(result["state"]["schema_version"], 2)
+        self.assertIsNone(result["state"]["recovery_target_close"])
+
+    def test_v1_same_day_migrates_without_replaying_a_new_stage(self):
+        initial = legacy_state(self.evaluate(observation(-12))["state"])
+        result = self.evaluate(observation(-22), initial)
+        self.assertEqual(result["status"], "migrated")
+        self.assertEqual(result["state"]["notified_thresholds_pct"], [-10])
+        self.assertIsNone(result["notification"])
+
+    def test_v1_older_observation_keeps_original_state(self):
+        initial = legacy_state(self.evaluate(observation(-16))["state"])
+        result = self.evaluate(observation(0, "2026-10-15", high=84), initial)
+        self.assertEqual(result["status"], "ignored")
+        self.assertEqual(result["state"], initial)
+        self.assertIsNone(result["notification"])
+
+    def test_notification_contains_both_price_references(self):
+        initial = self.evaluate(observation(-9))["state"]
+        data = observation(-20, "2026-10-17", ath=123)
+        result = self.evaluate(data, initial)
+        notice = result["notification"]
+        self.assertEqual(notice["current_close"], 80)
+        self.assertEqual(notice["rolling_high_close"], 100)
+        self.assertEqual(notice["rolling_high_date"], data["rolling_high_date"])
+        self.assertEqual(notice["rolling_drawdown_pct"], -20)
+        self.assertEqual(notice["drawdown_pct"], notice["rolling_drawdown_pct"])
+        self.assertEqual(notice["ath_close"], 123)
+        self.assertEqual(notice["ath_date"], data["ath_date"])
+        expected = float((Decimal(80) / Decimal(123) - 1) * 100)
+        self.assertAlmostEqual(notice["ath_drawdown_pct"], expected, places=12)
+        self.assertNotEqual(notice["ath_drawdown_pct"], data["drawdown_pct"])
+
+    def test_missing_or_invalid_ath_data_is_rejected_without_mutation(self):
+        initial = self.evaluate(observation(-12))["state"]
+        original = deepcopy(initial)
+        for missing in ("ath_close", "ath_date", "drawdown_pct"):
+            bad = observation(-16, "2026-10-17")
+            del bad[missing]
+            with self.subTest(missing=missing), self.assertRaises(ValueError):
+                self.evaluate(bad, initial)
+            self.assertEqual(initial, original)
+        for key, value in (("ath_close", 99), ("ath_close", 0),
+                           ("ath_close", True), ("ath_close", float("nan")),
+                           ("ath_date", "2026-10-18"), ("ath_date", "bad-date"),
+                           ("drawdown_pct", -99), ("drawdown_pct", True)):
+            bad = observation(-16, "2026-10-17")
+            bad[key] = value
+            with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                self.evaluate(bad, initial)
+            self.assertEqual(initial, original)
 
     def test_gap_through_all_levels_emits_only_deepest_stage(self):
         initial = self.evaluate(observation(-9))["state"]
