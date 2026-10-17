@@ -1,0 +1,37 @@
+{
+  "policy_version": 1,
+  "purpose": "Market drawdown monitoring; notifications are review prompts, not automatic trade orders.",
+  "reference": {
+    "price": "daily close",
+    "window_sessions": 252,
+    "field": "rolling_drawdown_pct",
+    "threshold_comparison": "Use the unrounded value. A level is reached when drawdown is less than or equal to its negative threshold."
+  },
+  "thresholds_pct": {
+    "NDX": [-10, -15, -20, -25],
+    "SOX": [-20, -25, -30, -35]
+  },
+  "episode_reset_drawdown_pct": -5,
+  "max_fetch_age_seconds": 10800,
+  "max_data_age_days": 7,
+  "fear_greed": {
+    "required_for_drawdown_alert": false,
+    "role": "Append the latest valid CNN score, category and data timestamp as context. If unavailable or stale, say so; do not suppress a valid drawdown alert or reuse stale data as current.",
+    "category_notifications": "Keep the existing independent CNN category-change policy and state."
+  },
+  "forward_pe": {
+    "enabled": false,
+    "instruction": "Do not fetch, evaluate, or notify on Forward P/E or its acquisition failures."
+  },
+  "task_instructions_ja": [
+    "NASDAQ100とSOXを別々に判定し、永続状態も別々に保存する。基準は各指数の直近252取引日の最高終値で、ATHや日中高値を代用しない。",
+    "NASDAQ100は-10/-15/-20/-25%、SOXは-20/-25/-30/-35%の4段階とし、それより深い下落で追加の段階通知は出さない。表示の丸め値で閾値を判定しない。",
+    "初回導入は最新の有効な観測をbaselineとして保存する。その時点で到達済みの段階は通知済み扱いにし、過去の下落を新規到達として通知しない。既存状態が読めない・壊れている場合は初回とみなさず、その指数の判定を止めて状態の復旧を行う。",
+    "同じepisodeで同じ段階を繰り返し通知しない。一時的にその段階より回復しても通知履歴を消さない。下落率が-5%以上に回復した新しい観測でepisodeを終了し、その後の下落を別episodeとする。252日の基準高値が窓から外れたことによる回復も、このルール上はepisode終了に含む。",
+    "一度に複数段階を通過した場合は最も深い到達段階を1件通知し、通過した全段階を通知済みとして記録する。指数が両方該当した場合は、同じ実行の1通の本文にまとめてもよいが、指数ごとの条件と履歴を混同しない。",
+    "有効なcurrent_dateが前回以下なら、再実行・同日修正・過去データで新規通知せず、前回状態を保持する。無効・古い・未来のデータで状態を進めず、取得エラーを0%回復とみなさない。",
+    "通知本文に指数名、対象日、現在の終値、基準高値と日付、高値からの下落率、今回の到達段階を記載する。Fear & Greedの最新有効な値を補足し、AND条件にはしない。",
+    "Fear & Greed単独のカテゴリ変化通知は既存ルールを維持し、予想PERの取得・判定・障害通知は行わない。",
+    "条件に新たな到達がなければ定例の状況報告は出さない。判定結果と未送信イベントを永続化してから配信し、指数・episode・段階で配信を重複排除する。配信失敗は未送信として保持し、状態ファイル欠損や再実行で過去イベントを新規作成しない。"
+  ]
+}

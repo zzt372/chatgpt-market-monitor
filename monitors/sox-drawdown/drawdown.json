@@ -1,0 +1,22 @@
+{
+  "schema_version": 2,
+  "ok": true,
+  "symbol": "SOX",
+  "current_close": 11137.29,
+  "current_date": "2026-10-16",
+  "ath_close": 14634.72,
+  "ath_date": "2026-06-22",
+  "drawdown_pct": -23.8982,
+  "window_sessions": 252,
+  "window_start_date": "2025-10-16",
+  "rolling_high_close": 14634.72,
+  "rolling_high_date": "2026-06-22",
+  "rolling_drawdown_pct": -23.89816819180688,
+  "total_records": 10801,
+  "finalized_records": 10801,
+  "fetched_at": "2026-10-17T19:08:44.768182Z",
+  "source": "Nasdaq official API",
+  "source_endpoint": "https://api.nasdaq.com/api/quote/SOX/historical",
+  "source_kind": "official-historical-close",
+  "fetch_method": "nasdaq-api"
+}

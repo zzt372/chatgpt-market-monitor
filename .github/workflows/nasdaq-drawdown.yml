@@ -5,7 +5,9 @@ on:
     branches: [main]
     paths:
       - "monitors/nasdaq-drawdown/drawdown.py"
-      - "monitors/nasdaq-drawdown/test_drawdown.py"
+      - "monitors/test_index_drawdown.py"
+      - "monitors/index_drawdown.py"
+      - "monitors/market-alerts/**"
       - ".github/workflows/nasdaq-drawdown.yml"
   workflow_dispatch:
   schedule:
@@ -33,7 +35,10 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run drawdown tests
-        run: python -m unittest -v test_drawdown.py
+        working-directory: .
+        run: |
+          python -m unittest discover -s monitors -p test_index_drawdown.py -v
+          python -m unittest discover -s monitors/market-alerts -p test_alerts.py -v
       - name: Fetch complete NDX close history from official Nasdaq API
         run: python drawdown.py
       - name: Validate drawdown payload
