@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "ok": true,
+  "product_id": 170087,
+  "product_name": "FlexiSpot E7 Pro",
+  "market": "JP",
+  "currency": "JPY",
+  "source_kind": "official-product-browser-rendered",
+  "checked_at": "2026-10-27T08:00:08.129Z",
+  "source_urls": [
+    "https://www.flexispot.jp/e7-pro.html",
+    "https://www.flexispot.jp/new/e7-pro.html"
+  ],
+  "frame_only": true,
+  "desktop_type": "無し",
+  "verified_variants": [
+    {
+      "color": "ホワイト",
+      "price_jpy": 61600
+    }
+  ],
+  "all_colors_verified": false,
+  "lowest_verified_frame_price_jpy": 61600,
+  "homepage_listing_price_jpy": 61600,
+  "checkout_and_coupon_verified": false,
+  "bootstrap_from_diagnostic_run": 40469741946,
+  "notes": "Bootstrapped from successful Chromium diagnostic run. Both official product pages show WHITE frame only, cart button ¥61,600. BLACK and coupon checkout not yet verified."
+}
