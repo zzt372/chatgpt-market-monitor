@@ -6,7 +6,8 @@ on:
     # GitHub's minimum supported schedule interval is 5 minutes.
     # Poll frequently so one or more dropped schedule events do not make the
     # category monitor stale for hours.
-    - cron: '*/5 * * * *'
+    # Offset from :00/:05 congestion; watchdog remains on separate minutes.
+    - cron: '3-58/5 * * * *'
   workflow_dispatch:
   push:
     paths:
