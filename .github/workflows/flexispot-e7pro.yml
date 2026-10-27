@@ -1,0 +1,51 @@
+name: Monitor - FlexiSpot E7 Pro Browser Price
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "monitors/flexispot-e7pro/*.mjs"
+      - ".github/workflows/flexispot-e7pro.yml"
+  workflow_dispatch:
+  schedule:
+    - cron: "31 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: flexispot-e7pro-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - name: Install Chromium browser
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Inspect official E7 Pro product pages
+        run: node monitors/flexispot-e7pro/diagnose.mjs
+      - name: Commit price diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add monitors/flexispot-e7pro/diagnostic.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Update FlexiSpot E7 Pro browser diagnostic"
+          for attempt in 1 2 3; do
+            if git push; then exit 0; fi
+            git pull --rebase origin main
+            sleep $((attempt * 2))
+          done
+          exit 1
