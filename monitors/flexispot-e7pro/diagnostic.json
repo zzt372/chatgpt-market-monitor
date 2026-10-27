@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "checked_at": "2026-10-27T08:10:36.286Z",
+  "checked_at": "2026-10-27T08:13:41.113Z",
   "checks": [
     {
       "url": "https://www.flexispot.jp/e7-pro.html",
@@ -49,6 +49,20 @@
           "self": "<span class=\"attr-value attr-value-pc\">ホワイト</span>",
           "parent": "<div class=\"label cutwords attrKey-label mainAttrKey-label \" title=\"カラー\">カラー：<span class=\"attr-value attr-value-pc\">ホワイト</span></div>"
         }
+      ],
+      "color_attempts": [
+        {
+          "color": "ホワイト",
+          "top": "無し",
+          "price": 61600,
+          "enabled": true
+        },
+        {
+          "color": "ホワイト",
+          "top": "無し",
+          "price": 61600,
+          "enabled": true
+        }
       ]
     },
     {
@@ -58,16 +72,6 @@
           "url": "https://www.flexispot.jp/new/e7-pro.html",
           "model_confirmed": true,
           "color": "ホワイト",
-          "desktop_type": "無し",
-          "button_text": "カートに入れる\n￥61,600",
-          "price": 61600,
-          "button_enabled": true,
-          "visible": true
-        },
-        {
-          "url": "https://www.flexispot.jp/new/e7-pro.html",
-          "model_confirmed": true,
-          "color": "ブラック",
           "desktop_type": "無し",
           "button_text": "カートに入れる\n￥61,600",
           "price": 61600,
@@ -107,6 +111,20 @@
           "text": "ホワイト",
           "self": "<span class=\"attr-value attr-value-pc\">ホワイト</span>",
           "parent": "<div class=\"label cutwords attrKey-label mainAttrKey-label \" title=\"カラー\">カラー：<span class=\"attr-value attr-value-pc\">ホワイト</span></div>"
+        }
+      ],
+      "color_attempts": [
+        {
+          "color": "ホワイト",
+          "top": "無し",
+          "price": 61600,
+          "enabled": true
+        },
+        {
+          "color": "ホワイト",
+          "top": "無し",
+          "price": 61600,
+          "enabled": true
         }
       ]
     }
