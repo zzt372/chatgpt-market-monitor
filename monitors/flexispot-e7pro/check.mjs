@@ -58,6 +58,13 @@ async function pageCheck(browser, url) {
     const primary = await snapshot(page, url);
     result.checks.push(primary);
     result.api_product_id = apiProductId;
+    result.color_selector_debug = await page.evaluate(() => {
+      const nodes = [...document.querySelectorAll("div, span, label")].filter(el => {
+        const t = (el.textContent || "").trim();
+        return (t === "カラー：" || t === "カラー：" + "ホワイト" || t === "カラー：" + "ブラック" || t === "ホワイト" || t === "ブラック") && el.children.length < 8;
+      });
+      return nodes.slice(0, 16).map(el => ({ text: (el.textContent || "").trim().slice(0, 80), self: el.outerHTML.slice(0, 700), parent: el.parentElement?.outerHTML.slice(0, 3000) }));
+    }).catch(() => []);
     // Try a black frame only when a color selector explicitly identifies that option.
     const candidates = page.locator(
       'img[alt*="ブラック"], [title*="ブラック"], [aria-label*="ブラック"], [data-color="black"]'
