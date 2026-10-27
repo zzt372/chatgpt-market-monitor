@@ -65,23 +65,25 @@ async function pageCheck(browser, url) {
       });
       return nodes.slice(0, 16).map(el => ({ text: (el.textContent || "").trim().slice(0, 80), self: el.outerHTML.slice(0, 700), parent: el.parentElement?.outerHTML.slice(0, 3000) }));
     }).catch(() => []);
-    // Try a black frame only when a color selector explicitly identifies that option.
-    const candidates = page.locator(
-      '#newtabl1 .sku-box img[src*="black-1.jpg"], img[alt*="ブラック"], [title*="ブラック"], [aria-label*="ブラック"], [data-color="black"]'
-    );
-    const count = Math.min(await candidates.count(), 15);
-    for (let i = 0; i < count; i++) {
-      const el = candidates.nth(i);
-      if (!(await el.isVisible().catch(() => false))) continue;
+    // Choose BLACK from its actual two-swatch E7 Pro color group, not accessory products.
+    // On some page loads the swatch image is intercepted; use the parent SKU box too.
+    const candidates = [
+      page.locator('#newtabl1 .sku-box').nth(1),
+      page.locator('#newtabl1 .sku-box img[src*="black-1.jpg"]').first()
+    ];
+    result.color_attempts = [];
+    for (const el of candidates) {
       try {
-        await el.click({ timeout: 2500 });
-        await page.waitForTimeout(1200);
+        if (!(await el.isVisible().catch(() => false))) continue;
+        await el.click({ force: true, timeout: 3500 });
+        await page.waitForTimeout(1900);
         const selected = await snapshot(page, url);
+        result.color_attempts.push({ color: selected.color, top: selected.desktop_type, price: selected.price, enabled: selected.button_enabled });
         if (selected.color === "ブラック" && selected.desktop_type === "無し") {
           result.checks.push(selected);
           break;
         }
-      } catch {}
+      } catch (e) { result.color_attempts.push({ error: String(e).slice(0, 250) }); }
     }
   } catch (err) {
     result.error = String(err).slice(0, 600);
