@@ -32,15 +32,16 @@ jobs:
         run: |
           npm install --no-save --no-package-lock playwright@1.56.1
           npx playwright install --with-deps chromium
-      - name: Inspect official E7 Pro product pages
-        run: node monitors/flexispot-e7pro/diagnose.mjs
-      - name: Commit price diagnostic
+      - name: Verify live E7 Pro frame-only prices across both official URLs
+        run: node monitors/flexispot-e7pro/check.mjs
+      - name: Commit verified price data or diagnostic
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add monitors/flexispot-e7pro/diagnostic.json
+          git add monitors/flexispot-e7pro/latest.json 2>/dev/null || true
           if git diff --cached --quiet; then exit 0; fi
           git commit -m "Update FlexiSpot E7 Pro browser diagnostic"
           for attempt in 1 2 3; do
