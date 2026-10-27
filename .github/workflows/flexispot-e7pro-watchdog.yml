@@ -1,0 +1,81 @@
+name: Watchdog - FlexiSpot E7 Pro price freshness
+
+on:
+  schedule:
+    # Independent from the main :31 hourly browser verification.
+    - cron: "17,47 * * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/flexispot-e7pro-watchdog.yml"
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: flexispot-e7pro-watchdog
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Recheck when verified price data is stale
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const workflow_id = "flexispot-e7pro.yml";
+            const now = Date.now();
+            const maxAgeMs = 90 * 60 * 1000;
+            const cooldownMs = 40 * 60 * 1000;
+            let checkedAt = NaN;
+
+            try {
+              const {data: file} = await github.rest.repos.getContent({
+                owner, repo,
+                path: "monitors/flexispot-e7pro/latest.json",
+                ref: "main"
+              });
+              if (Array.isArray(file) || file.type !== "file" || file.encoding !== "base64") {
+                throw new Error("Unexpected latest.json API response");
+              }
+              const latest = JSON.parse(Buffer.from(file.content, "base64").toString("utf8"));
+              if (latest.schema_version === 1 && latest.ok === true) {
+                checkedAt = Date.parse(latest.checked_at);
+              }
+            } catch (e) {
+              core.warning("Cannot verify latest.json freshness: " + e.message);
+            }
+
+            const ageMs = now - checkedAt;
+            if (Number.isFinite(ageMs) && ageMs >= -10 * 60 * 1000 && ageMs < maxAgeMs) {
+              core.info("Fresh verified prices (" + Math.round(ageMs / 60000) + " min old); no action.");
+              return;
+            }
+
+            const {data} = await github.rest.actions.listWorkflowRuns({
+              owner, repo, workflow_id, per_page: 30
+            });
+            const mainRuns = (data.workflow_runs || [])
+              .filter(run => run.head_branch === "main")
+              .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+            const lastRun = mainRuns[0];
+            if (lastRun) {
+              const sinceRunMs = now - Date.parse(lastRun.created_at);
+              if (Number.isFinite(sinceRunMs) && sinceRunMs >= -10 * 60 * 1000 && sinceRunMs < cooldownMs) {
+                core.info("Main verification run started recently (" +
+                  Math.round(sinceRunMs / 60000) + " min ago, " +
+                  lastRun.status + "); skip duplicate dispatch.");
+                return;
+              }
+            }
+
+            core.warning("Verified E7 Pro prices are stale or unavailable; dispatching recovery verification.");
+            await github.rest.actions.createWorkflowDispatch({
+              owner, repo, workflow_id, ref: "main"
+            });
+            core.info("Recovery dispatch accepted. Existing browser validator determines validity; no price inferred.");
