@@ -11,7 +11,8 @@ on:
       - ".github/workflows/sox-drawdown.yml"
   workflow_dispatch:
   schedule:
-    - cron: "22 * * * *"
+    # Redundant off-peak triggers: scheduled GitHub events can be delayed or dropped.
+    - cron: "2,22,42 * * * *"
 
 permissions:
   contents: write
