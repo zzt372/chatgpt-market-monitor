@@ -41,11 +41,31 @@ async function pageCheck(browser, url) {
   const context = await browser.newContext({ locale: "ja-JP", timezoneId: "Asia/Tokyo" });
   const page = await context.newPage();
   let apiProductId = null;
+  let apiDetailDebug = null;
   page.on("response", async (response) => {
     if (!response.url().includes("/sapi/mall-item/item/detail") || response.status() !== 200) return;
     try {
       const value = await response.json();
-      if (value?.code === 200) apiProductId = value?.data?.id ?? null;
+      if (value?.code === 200) {
+        apiProductId = value?.data?.id ?? null;
+        const entries = [];
+        let visited = 0;
+        const scan = (node, path, depth) => {
+          if (!node || depth > 9 || visited++ > 18000 || entries.length >= 65) return;
+          if (Array.isArray(node)) return node.slice(0, 90).forEach((item, i) => scan(item, path + "[" + i + "]", depth + 1));
+          if (typeof node !== "object") return;
+          if ("salePrc" in node || "originalPrc" in node || "instock" in node) {
+            const out = { path };
+            for (const k of ["id","skuId","itemId","skuCode","itemCode","code","name","color","salePrc","originalPrc","instock","skuAttributes","skuAttributeList"]) {
+              if (k in node) out[k] = typeof node[k] === "object" ? JSON.stringify(node[k]).slice(0, 700) : node[k];
+            }
+            entries.push(out);
+          }
+          for (const [k,v] of Object.entries(node)) if (v && typeof v === "object") scan(v, path + "." + k, depth + 1);
+        };
+        scan(value.data, "data", 0);
+        apiDetailDebug = { request_method: response.request().method(), post_data: response.request().postData()?.slice(0,500) ?? null, top_keys: Object.keys(value.data || {}), item_render_keys: Object.keys(value.data?.itemRenderTO || {}), price_records: entries };
+      }
     } catch {}
   });
   const result = { url, checks: [] };
@@ -58,6 +78,7 @@ async function pageCheck(browser, url) {
     const primary = await snapshot(page, url);
     result.checks.push(primary);
     result.api_product_id = apiProductId;
+    result.api_detail_debug = apiDetailDebug;
     result.color_selector_debug = await page.evaluate(() => {
       const nodes = [...document.querySelectorAll("div, span, label")].filter(el => {
         const t = (el.textContent || "").trim();
