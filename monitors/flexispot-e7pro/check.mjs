@@ -67,7 +67,7 @@ async function pageCheck(browser, url) {
     }).catch(() => []);
     // Try a black frame only when a color selector explicitly identifies that option.
     const candidates = page.locator(
-      'img[alt*="ブラック"], [title*="ブラック"], [aria-label*="ブラック"], [data-color="black"]'
+      '#newtabl1 .sku-box img[src*="black-1.jpg"], img[alt*="ブラック"], [title*="ブラック"], [aria-label*="ブラック"], [data-color="black"]'
     );
     const count = Math.min(await candidates.count(), 15);
     for (let i = 0; i < count; i++) {
