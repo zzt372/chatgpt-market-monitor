@@ -1,4 +1,4 @@
-name: Monitor - FlexiSpot E7 Pro Official SKU Price
+name: Monitor - FlexiSpot E7 Pro Verified SKU Price
 
 on:
   push:
@@ -28,8 +28,18 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-      - name: Verify official E7 Pro white and black SKU prices
-        run: node monitors/flexispot-e7pro/check-api.mjs
+      - name: Install headless Chromium
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install chromium --only-shell
+      - name: Verify official E7 Pro white and black SKU prices in browser
+        id: verify
+        shell: bash
+        run: |
+          set +e
+          node monitors/flexispot-e7pro/check.mjs
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          exit 0
       - name: Commit verified price data or diagnostic
         shell: bash
         run: |
@@ -46,3 +56,6 @@ jobs:
             sleep $((attempt * 2))
           done
           exit 1
+      - name: Flag verification failure
+        if: steps.verify.outputs.exit_code != '0'
+        run: exit 1
