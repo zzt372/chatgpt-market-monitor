@@ -6,7 +6,7 @@
   "market": "JP",
   "currency": "JPY",
   "source_kind": "official-product-browser-rendered",
-  "checked_at": "2026-10-27T08:00:08.129Z",
+  "checked_at": "2026-10-27T08:06:37.516Z",
   "source_urls": [
     "https://www.flexispot.jp/e7-pro.html",
     "https://www.flexispot.jp/new/e7-pro.html"
@@ -23,6 +23,5 @@
   "lowest_verified_frame_price_jpy": 61600,
   "homepage_listing_price_jpy": 61600,
   "checkout_and_coupon_verified": false,
-  "bootstrap_from_diagnostic_run": 40469741946,
-  "notes": "Bootstrapped from successful Chromium diagnostic run. Both official product pages show WHITE frame only, cart button ¥61,600. BLACK and coupon checkout not yet verified."
+  "notes": "Live Chromium DOM: each verified color price must agree across two independent official product URLs. Coupon application and final checkout require separate verification; do not claim discounted checkout amount."
 }
