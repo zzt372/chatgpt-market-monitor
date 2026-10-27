@@ -11,7 +11,8 @@ on:
       - ".github/workflows/nasdaq-drawdown.yml"
   workflow_dispatch:
   schedule:
-    - cron: "12 * * * *"
+    # Redundant off-peak triggers: scheduled GitHub events can be delayed or dropped.
+    - cron: "12,32,52 * * * *"
 
 permissions:
   contents: write
