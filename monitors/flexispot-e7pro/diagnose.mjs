@@ -33,7 +33,7 @@ for (const url of URLS) {
     await page.waitForTimeout(3000);
     row.title = await page.title();
     row.body_text = (await page.locator("body").innerText().catch(() => "")).slice(0, 11000);
-    row.price_texts = row.body_text.match(/(?:￥|¥)\\s*(?:[0-9,]+|NaN)/g)?.slice(0, 40) || [];
+    row.price_texts = row.body_text.match(/(?:￥|¥)\s*(?:[0-9,]+|NaN)/g)?.slice(0, 40) || [];
     row.controls = await page.locator("button, input, select, option, label, [role=radio], [role=button]").evaluateAll((els) =>
       els.slice(0, 260).map((el) => ({
         tag: el.tagName,
@@ -59,6 +59,6 @@ for (const url of URLS) {
   report.pages.push(row);
   await page.close().catch(() => {});
 }
-await fs.writeFile(OUT, JSON.stringify(report, null, 2)+"\\n");
+await fs.writeFile(OUT, JSON.stringify(report, null, 2)+"\n");
 console.log("E7 Pro diagnostic captured", report.pages.map(p => ({url:p.url,status:p.http_status,prices:p.price_texts,network:p.network.length,errors:p.errors.length})));
 await browser.close();
