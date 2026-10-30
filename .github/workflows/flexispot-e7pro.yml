@@ -41,21 +41,67 @@ jobs:
           node monitors/flexispot-e7pro/check.mjs
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
           exit 0
-      - name: Commit verified price data or diagnostic
+      - name: Publish newer verified data safely (concurrent writer resistant)
         shell: bash
+        env:
+          VERIFY_EXIT_CODE: ${{ steps.verify.outputs.exit_code }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add monitors/flexispot-e7pro/diagnostic.json
-          git add monitors/flexispot-e7pro/latest.json 2>/dev/null || true
-          if git diff --cached --quiet; then exit 0; fi
-          git commit -m "Update FlexiSpot E7 Pro SKU price"
-          for attempt in 1 2 3; do
-            if git push; then exit 0; fi
-            git pull --rebase origin main
+
+          # Preserve this run's outputs before resetting to the latest remote main.
+          result_dir="$(mktemp -d)"
+          cp monitors/flexispot-e7pro/diagnostic.json "$result_dir/diagnostic.json"
+          if [[ "$VERIFY_EXIT_CODE" == "0" ]]; then
+            cp monitors/flexispot-e7pro/latest.json "$result_dir/latest.json"
+          fi
+
+          # Other hourly GitHub Actions also push to main. Never rebase generated
+          # JSON over generated JSON: restart from the remote head on each retry.
+          for attempt in 1 2 3 4 5 6; do
+            git fetch origin main
+            git reset --hard origin/main
+            node - "$result_dir" "$VERIFY_EXIT_CODE" <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const [dir, status] = process.argv.slice(2);
+          const root = "monitors/flexispot-e7pro";
+          function useIfNewer(filename) {
+            const incomingPath = path.join(dir, filename);
+            const incoming = JSON.parse(fs.readFileSync(incomingPath, "utf8"));
+            const timestamp = Date.parse(incoming.checked_at);
+            if (!Number.isFinite(timestamp)) throw new Error("Invalid incoming timestamp: " + filename);
+            const destPath = path.join(root, filename);
+            let existingTimestamp = -Infinity;
+            try {
+              const existing = JSON.parse(fs.readFileSync(destPath, "utf8"));
+              existingTimestamp = Date.parse(existing.checked_at);
+            } catch (e) {
+              if (e.code !== "ENOENT") {
+                console.warn("Existing " + filename + " is invalid; replacing with verified output.");
+              }
+            }
+            if (Number.isFinite(existingTimestamp) && timestamp <= existingTimestamp) {
+              console.log("Preserving newer remote " + filename);
+              return;
+            }
+            fs.copyFileSync(incomingPath, destPath);
+            console.log("Staged fresh " + filename + " checked at " + incoming.checked_at);
+          }
+          useIfNewer("diagnostic.json");
+          if (status === "0") useIfNewer("latest.json");
+          NODE
+            git add monitors/flexispot-e7pro/diagnostic.json monitors/flexispot-e7pro/latest.json
+            if git diff --cached --quiet; then
+              echo "Remote already has the same or newer verified data."
+              exit 0
+            fi
+            git commit -m "Update FlexiSpot E7 Pro SKU price"
+            if git push origin HEAD:main; then exit 0; fi
             sleep $((attempt * 2))
           done
+          echo "Failed to publish verified data after six merge-free attempts." >&2
           exit 1
       - name: Flag verification failure
         if: steps.verify.outputs.exit_code != '0'
