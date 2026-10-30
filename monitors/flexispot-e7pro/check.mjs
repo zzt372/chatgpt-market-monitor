@@ -4,7 +4,6 @@ import fs from "node:fs/promises";
 const URLS = ["https://www.flexispot.jp/e7-pro.html", "https://www.flexispot.jp/new/e7-pro.html"];
 const OUT = new URL("./latest.json", import.meta.url);
 const DIAG = new URL("./diagnostic.json", import.meta.url);
-const checkedAt = new Date().toISOString();
 
 function amount(field) {
   const n = Number(field && typeof field === "object" ? field.value : field);
@@ -70,22 +69,47 @@ async function checkPage(browser, url) {
   }
   return result;
 }
-const browser = await chromium.launch({headless:true});
-const checks=[];
-try {
-  for (const url of URLS) checks.push(await checkPage(browser,url));
-} finally {
-  await browser.close();
-}
-const valid = checks.length === 2 && checks.every(row => {
-  const white = row.api_variants?.find(v=>v.sku_code === "E7WPro");
-  const black = row.api_variants?.find(v=>v.sku_code === "E7BPro");
-  return row.http_status === 200 && row.api_product_id === 170087 &&
+function rowValid(row) {
+  const white = row?.api_variants?.find(v => v.sku_code === "E7WPro");
+  const black = row?.api_variants?.find(v => v.sku_code === "E7BPro");
+  return row?.http_status === 200 && row.api_product_id === 170087 &&
     row.model_visible === true && row.visible_color === "ホワイト" && row.visible_top === "無し" &&
     row.visible_buy_enabled === true && row.visible_price === white?.price_jpy &&
     Number.isInteger(black?.price_jpy);
-}) && JSON.stringify(checks[0].api_variants) === JSON.stringify(checks[1].api_variants);
-await fs.writeFile(DIAG,JSON.stringify({schema_version:1,checked_at:checkedAt,valid,checks},null,2)+"\n","utf8");
+}
+async function checkPageWithRetry(browser, url) {
+  const attempts = [];
+  let row = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      row = await checkPage(browser, url);
+    } catch (e) {
+      row = {url, error:String(e).slice(0,450)};
+    }
+    const passed = rowValid(row);
+    attempts.push({attempt, passed, error:row.error || null});
+    if (passed) return {row, attempts};
+    console.warn(`E7 Pro page ${url} failed attempt ${attempt}/3: ${row.error || "DOM/SKU verification failed"}`);
+    if (attempt < 3) await new Promise(resolve => setTimeout(resolve, 1500 * attempt));
+  }
+  return {row, attempts};
+}
+const browser = await chromium.launch({headless:true});
+const checks=[];
+const attempt_history=[];
+try {
+  for (const url of URLS) {
+    const {row, attempts} = await checkPageWithRetry(browser, url);
+    checks.push(row);
+    attempt_history.push({url, attempts});
+  }
+} finally {
+  await browser.close();
+}
+const checkedAt = new Date().toISOString();
+const valid = checks.length === 2 && checks.every(rowValid) &&
+  JSON.stringify(checks[0].api_variants) === JSON.stringify(checks[1].api_variants);
+await fs.writeFile(DIAG,JSON.stringify({schema_version:1,checked_at:checkedAt,valid,checks,attempt_history},null,2)+"\n","utf8");
 if (!valid) {
   console.error("Official E7 Pro SKU price verification failed",checks);
   process.exitCode=1;
