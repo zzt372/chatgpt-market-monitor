@@ -8,19 +8,20 @@ on:
       - ".github/workflows/flexispot-e7pro.yml"
   workflow_dispatch:
   schedule:
-    - cron: "31 * * * *"
+    # Two staggered opportunities/hour; GitHub schedule can be delayed or dropped.
+    - cron: "11,41 * * * *"
 
 permissions:
   contents: write
 
 concurrency:
   group: flexispot-e7pro-update
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
