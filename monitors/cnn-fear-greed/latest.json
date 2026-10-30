@@ -1,11 +1,11 @@
 {
-  "score": 23.2403361344538,
-  "rating": "Extreme Fear",
-  "category": "Extreme Fear",
-  "timestamp": "2026-10-30T18:15:20Z",
+  "score": 26.2386554621849,
+  "rating": "Fear",
+  "category": "Fear",
+  "timestamp": "2026-10-30T20:51:35Z",
   "source": "CNN official",
   "source_url": "https://production.dataviz.cnn.io/index/fearandgreed/graphdata",
   "endpoint": "root JSON",
-  "fetched_at": "2026-10-30T18:16:55.304929Z",
+  "fetched_at": "2026-10-30T21:08:16.140206Z",
   "ok": true
 }
