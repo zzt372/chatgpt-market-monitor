@@ -1,19 +1,32 @@
 {
   "schema_version": 1,
-  "checked_at": "2026-10-30T08:52:38.080Z",
-  "valid": false,
+  "checked_at": "2026-10-30T12:58:36.789Z",
+  "valid": true,
   "checks": [
     {
       "url": "https://www.flexispot.jp/e7-pro.html",
       "http_status": 200,
-      "api_product_id": null,
-      "api_variants": null,
-      "visible_color": null,
-      "visible_top": null,
-      "visible_price": null,
+      "api_product_id": 170087,
+      "api_variants": [
+        {
+          "color": "ホワイト",
+          "sku_code": "E7WPro",
+          "price_jpy": 61600,
+          "regular_price_jpy": 61600
+        },
+        {
+          "color": "ブラック",
+          "sku_code": "E7BPro",
+          "price_jpy": 61600,
+          "regular_price_jpy": 61600
+        }
+      ],
+      "visible_color": "ホワイト",
+      "visible_top": "無し",
+      "visible_price": 61600,
       "visible_buy_enabled": true,
       "model_visible": true,
-      "error": "Error: Official detail API response not captured: none"
+      "product_level_price_jpy": 61600
     },
     {
       "url": "https://www.flexispot.jp/new/e7-pro.html",
