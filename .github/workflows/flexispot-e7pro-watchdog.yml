@@ -4,6 +4,17 @@ on:
   schedule:
     # Independent from the main :31 hourly browser verification.
     - cron: "17,47 * * * *"
+  # This event path does not depend on this workflow's delayed cron schedule.
+  # Only independent market/dental workflows are used; never the E7 Pro workflows themselves.
+  workflow_run:
+    workflows:
+      - "Market Monitor - CNN Fear & Greed"
+      - "Market Monitor - Nasdaq 100 Drawdown"
+      - "Market Monitor - SOX Drawdown"
+      - "Monitor - Dental Availability"
+      - "Market Monitor - CNN Fear & Greed Watchdog"
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
   push:
     branches: [main]
@@ -20,6 +31,11 @@ concurrency:
 
 jobs:
   recover:
+    # Do not trust runs from forks or other branches.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.head_repository.full_name == github.repository &&
+       github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -30,8 +46,8 @@ jobs:
             const {owner, repo} = context.repo;
             const workflow_id = "flexispot-e7pro.yml";
             const now = Date.now();
-            const maxAgeMs = 90 * 60 * 1000;
-            const cooldownMs = 40 * 60 * 1000;
+            const maxAgeMs = 75 * 60 * 1000;
+            const cooldownMs = 30 * 60 * 1000;
             let checkedAt = NaN;
 
             try {
@@ -44,8 +60,25 @@ jobs:
                 throw new Error("Unexpected latest.json API response");
               }
               const latest = JSON.parse(Buffer.from(file.content, "base64").toString("utf8"));
-              if (latest.schema_version === 1 && latest.ok === true) {
+              const expectedUrls = [
+                "https://www.flexispot.jp/e7-pro.html",
+                "https://www.flexispot.jp/new/e7-pro.html"
+              ];
+              const variants = latest.verified_variants;
+              const priceOkay = Array.isArray(variants) && variants.length > 0 &&
+                variants.every(v => (v.color === "ホワイト" || v.color === "ブラック") &&
+                  Number.isInteger(v.price_jpy) && v.price_jpy >= 20000 && v.price_jpy <= 150000);
+              const valid = latest.schema_version === 1 && latest.ok === true &&
+                latest.product_id === 170087 && /E7 Pro/.test(latest.product_name || "") &&
+                latest.market === "JP" && latest.currency === "JPY" &&
+                latest.source_kind === "official-product-browser-rendered" &&
+                latest.frame_only === true && latest.desktop_type === "無し" &&
+                expectedUrls.every(u => latest.source_urls?.includes(u)) &&
+                priceOkay && Math.min(...variants.map(v => v.price_jpy)) === latest.lowest_verified_frame_price_jpy;
+              if (valid) {
                 checkedAt = Date.parse(latest.checked_at);
+              } else {
+                core.warning("Latest JSON has not passed required E7 Pro schema/price checks.");
               }
             } catch (e) {
               core.warning("Cannot verify latest.json freshness: " + e.message);
