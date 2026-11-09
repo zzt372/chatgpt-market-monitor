@@ -279,6 +279,18 @@ class AlertTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "state symbol mismatch"):
             self.evaluate(observation(-24, "2026-10-17", "SOX"), ndx)
 
+    def test_sp500_is_judged_independently_with_its_own_levels(self):
+        spx = self.evaluate(observation(-5.65, symbol="SPX"))
+        self.assertEqual(spx["status"], "baseline")
+        self.assertEqual(spx["state"]["notified_thresholds_pct"], [])
+        result = self.evaluate(observation(-15.2, "2026-10-17", "SPX"), spx["state"])
+        self.assertEqual(result["notification"]["symbol"], "SPX")
+        self.assertEqual(result["notification"]["threshold_pct"], -15)
+        self.assertEqual(result["state"]["notified_thresholds_pct"], [-10, -15])
+        ndx = self.evaluate(observation(-9))["state"]
+        with self.assertRaisesRegex(ValueError, "state symbol mismatch"):
+            self.evaluate(observation(-16, "2026-10-17", "SPX"), ndx)
+
     def test_unrounded_sox_drawdown_does_not_cross_35_early(self):
         initial = self.evaluate(observation(-31, "2026-10-14", "SOX"))["state"]
         almost = self.evaluate(observation(-34.991666, "2026-10-15", "SOX"), initial)
@@ -306,7 +318,8 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(payload, original_payload)
         policy = json.loads(Path(__file__).with_name("policy.json").read_text(encoding="utf-8"))
         self.assertEqual(policy["thresholds_pct"],
-                         {"NDX": [-10, -15, -20, -25], "SOX": [-20, -25, -30, -35]})
+                         {"NDX": [-10, -15, -20, -25], "SPX": [-10, -15, -20, -25],
+                          "SOX": [-20, -25, -30, -35]})
         self.assertFalse(policy["fear_greed"]["required_for_drawdown_alert"])
         self.assertFalse(policy["forward_pe"]["enabled"])
 

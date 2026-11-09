@@ -43,7 +43,8 @@ jobs:
       - name: Fetch complete NDX close history from official Nasdaq API
         run: python drawdown.py
       - name: Validate drawdown payload
-        run: python drawdown.py --check-latest --max-fetch-age-seconds 120
+        # An unchanged payload is republished only hourly (HEARTBEAT_SECONDS).
+        run: python drawdown.py --check-latest --max-fetch-age-seconds 3900
       - name: Commit drawdown.json
         shell: bash
         run: |

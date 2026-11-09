@@ -11,18 +11,18 @@ ChatGPTの「マーケット指標監視」タスクで使用する、市場デ�
 | CNN Fear & Greed | `monitors/cnn-fear-greed/latest.json` | CNN公式JSON |
 | NASDAQ100の直近252取引日最高終値からの下落率 | `monitors/nasdaq-drawdown/drawdown.json` | Nasdaq公式ヒストリカルAPI |
 | SOXの直近252取引日最高終値からの下落率 | `monitors/sox-drawdown/drawdown.json` | Nasdaq公式ヒストリカルAPI |
-| 浦和美園かいじゅう歯科 予約空き日 | `monitors/dental-availability/latest.json` | Stransa予約画面（Playwright） |
+| S&P500の直近252取引日最高終値からの下落率 | `monitors/sp500-drawdown/drawdown.json` | Cboeの公開データ（遅延配信の履歴・現在値） |
 
 ## 指数の通知条件
 
-NASDAQ100とSOXは独立して判定し、通知済みの段階・再通知を開始できる状態も指数ごとに保存します。
+NASDAQ100・S&P500・SOXは独立して判定し、通知済みの段階・再通知を開始できる状態も指数ごとに保存します。
 
-| 段階 | NASDAQ100 | SOX |
-|---|---:|---:|
-| 1 | −10% | −20% |
-| 2 | −15% | −25% |
-| 3 | −20% | −30% |
-| 4 | −25% | −35% |
+| 段階 | NASDAQ100 | S&P500 | SOX |
+|---|---:|---:|---:|
+| 1 | −10% | −10% | −20% |
+| 2 | −15% | −15% | −25% |
+| 3 | −20% | −20% | −30% |
+| 4 | −25% | −25% | −35% |
 
 通知を判定する下落率は次の式です。現在日を含む直近252取引日の終値を使用します。全履歴最高終値（ATH）からの下落率も通知本文に参考情報として添えますが、通知判定・再通知の条件には使用しません。
 
@@ -31,6 +31,8 @@ rolling_drawdown_pct = (current_close / rolling_high_close - 1) * 100
 ```
 
 現在値には取引時間中の価格ではなく、確定した終値を使います。年初来騰落率や前日比とも異なります。閾値の判定には丸め前の `rolling_drawdown_pct` を使用し、表示時だけ丸めます。
+
+S&P500はNasdaqのAPIにないため、Cboe（S&P500オプションの取引所）が公開する1975年以降の日次終値を使います。2026-11-09の確認では、FREDのSP500系列と重なる2,513日のうち2,506日が一致し、残り7日（2018〜2020年）は小さな差でした。
 
 通知条件の正本は `monitors/market-alerts/policy.json`、状態を使った判定の正本は `monitors/market-alerts/alerts.py` です。
 
@@ -56,21 +58,54 @@ Fear / Extreme Fear / Neutral / Greed / Extreme Greed の**カテゴリが変わ
 
 | フィールド | 内容 |
 |---|---|
-| `symbol` | `NDX` または `SOX` |
+| `symbol` | `NDX`・`SPX`・`SOX` のいずれか |
 | `current_close` / `current_date` | 最新の確定終値と、その取引日 |
 | `window_sessions` | `252` |
 | `rolling_high_close` / `rolling_high_date` | 直近252取引日の最高終値と、その取引日 |
 | `rolling_drawdown_pct` | 最高終値からの下落率。判定前に丸めない |
 | `ath_close` / `ath_date` / `drawdown_pct` | 全履歴最高終値、その日付、ATH比の下落率。通知本文の参考情報 |
 | `fetched_at` | 実際に取得・検証した時刻 |
+| `current_close_source` | 最新終値の取得元。通常は履歴（`nasdaq-historical` / `cboe-historical`）、履歴の反映前に現在値で補った場合は `nasdaq-quote-info` / `cboe-quote` |
+| `supplemented_records` | 現在値APIで補った行数（0または1） |
 
-両指数の通知には、判定に使用した直近252取引日比と、参考のATH比を区別して表示します。ATH比を直近252取引日比の代わりに通知判定へ使用しません。
+各指数の通知には、判定に使用した直近252取引日比と、参考のATH比を区別して表示します。ATH比を直近252取引日比の代わりに通知判定へ使用しません。
 
 指数ごとの通知状態は `schema_version: 2` / `policy_version: 2` です。`last_rolling_high_close` に前回観測の基準高値、`recovery_target_close` に保留中の固定回復確認価格を保存します。通知済み段階と下落局面の識別子も永続保存します。
 
 各指数は独立したworkflowで更新します。取得または検証に失敗した場合は最後の正常JSONを保持し、保存値を読み直しただけで取得時刻を進めません。新しいデータを検証できた場合だけ公開します。
 
-GitHub Actionsの定期実行はベストエフォートであり、設定間隔どおりの実行を保証しません。CNN Fear & Greedの独立Watchdogは既存どおり運用します。APIキー・トークンなどの秘密情報はリポジトリへ保存しません。
+Nasdaqの履歴APIは、取引終了から数時間たっても当日の終値を載せないことがあります（例：2026-11-05の終値は約6時間後でも未反映）。そのため、同じ取得元の現在値（Nasdaqは `/api/quote/<指数>/info`、Cboeは `/quotes/_SPX.json`）も確認し、次の条件をすべて満たすときだけ、その終値を最新の取引日として補います。翌日以降は履歴の値で計算し直します。
+
+- 平日で、ニューヨーク時間16:15を過ぎた確定済みの取引日である
+- 市場の状態が取引中（`Open`）ではない。Cboeは最終値の時刻が16:10以降である（2026-11-06の最終値は16:14:59。短縮取引の日は補わず履歴を待つ）
+- 履歴APIのどの確定済み行よりも新しい日付である
+- 現在値APIの前日終値が、履歴APIの最新終値と一致する（取引日の抜けがない）
+
+市場データが変わらず `fetched_at` だけが進む場合は、1時間に1回だけ公開します（`HEARTBEAT_SECONDS`）。頻繁に起動しても、コミットが増えすぎないようにするためです。
+
+GitHub Actionsの定期実行はベストエフォートであり、設定間隔どおりの実行を保証しません（2026年11月時点では、20分・5分ごとの設定でも実際には4〜8時間に1回でした）。CNN Fear & Greedの独立Watchdogは既存どおり運用します。APIキー・トークンなどの秘密情報はリポジトリへ保存しません。
+
+### PCの常駐アイコン（補助）
+
+所有者のWindows PCで常駐アイコン（`scripts/pc/tray.ps1`）を動かし、15分ごとに `nasdaq-drawdown.yml` / `sp500-drawdown.yml` / `sox-drawdown.yml` / `cnn-fear-greed.yml` を `workflow_dispatch` で起動します。PCにログインしている間だけ動き、既存のGitHub CLI（`gh`）のログインを使うため、新しいトークンは作っていません。PCが止まっている間は、GitHubの定期実行だけに戻ります。
+
+`マーケット監視を起動.vbs` で起動し、`マーケット監視を停止.vbs` かアイコンの右クリック →「終了」で止めます。Windowsログイン時の自動起動は `scripts/pc/install.ps1` で登録します（`-Uninstall` で解除）。
+
+アイコンは藍色の角丸四角に白いろうそく足（株価チャート）で、右上の点の色で状態を表します。丸い緑のアイコン（ちかめし）と見分けられるよう、形と地の色を変えています。
+
+| 右上の点 | 状態 |
+| --- | --- |
+| 緑 | 正常に監視中（4つのデータとも取得から3時間未満） |
+| 青 | 更新処理を起動中・GitHubの更新を待っている・確認中 |
+| 黄 | データが3時間以上古い（ChatGPTは判定を保留する）、データを読めない、起動に失敗して再試行待ち |
+| 赤 | 起動に3回続けて失敗、`gh` が見つからない |
+| 灰 | 一時停止中 |
+
+マウスを重ねると状態を表示します。右クリックで、NASDAQ100・S&P500・SOXの直近252取引日比とFear & Greedの値、前回・次回の起動時刻を確認でき、「今すぐ更新」「一時停止／再開」「GitHubの実行履歴を開く」「終了」を選べます。ダブルクリックでGitHubの実行履歴を開きます。
+
+起動・失敗の記録は `.private/tray.log`、最新の状態は `.private/tray-status.json` に保存します（Git対象外）。表示内容の判定は `scripts/pc/tray-core.ps1` にまとめ、`scripts/pc/test-tray-core.ps1` で検証します。
+
+Windowsは通知領域アイコンの表示設定を「実行ファイル＋番号」で覚えるため、他のPowerShell製アイコン（番号1）と分けて固有の番号 `28013` を使います。`install.ps1` はこの番号の設定だけを「常に表示」にします。設定はWindowsのタスクバーが次に起動したとき（再起動・サインイン後）に反映されます。すぐに表示したい場合は、タスクバーの「^」からアイコンをタスクバーへドラッグしてください。
 
 ## ディレクトリ構成
 
@@ -87,20 +122,27 @@ monitors/
   sox-drawdown/
     drawdown.py
     drawdown.json
+  sp500-drawdown/
+    drawdown.py
+    drawdown.json
   market-alerts/
     policy.json
     alerts.py
     task-instructions.md
-  dental-availability/
-    check.mjs
-    latest.json
+
+scripts/pc/
+  tray.ps1
+  tray-core.ps1
+  test-tray-core.ps1
+  install.ps1
+  stop.ps1
 
 .github/workflows/
   cnn-fear-greed.yml
   cnn-fear-greed-watchdog.yml
   nasdaq-drawdown.yml
   sox-drawdown.yml
-  dental-availability.yml
+  sp500-drawdown.yml
 ```
 
 ## ChatGPTのスケジュールタスクへの反映

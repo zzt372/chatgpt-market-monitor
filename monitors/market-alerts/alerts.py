@@ -10,6 +10,7 @@ POLICY_VERSION = 2
 STATE_VERSION = 2
 THRESHOLDS_PCT = {
     "NDX": (-10, -15, -20, -25),
+    "SPX": (-10, -15, -20, -25),
     "SOX": (-20, -25, -30, -35),
 }
 RESET_DRAWDOWN_PCT = -5
@@ -149,7 +150,7 @@ def _validate_state(state, symbol):
 def evaluate_observation(payload, state=None, *, now=None):
     """Return a new state and at most one alert, without mutating either input.
 
-    Call separately for NDX and SOX, and persist the returned states independently.
+    Call separately for NDX, SPX and SOX, and persist the returned states independently.
     A missing state explicitly means first observation: all already reached levels
     become the baseline without delivery. Never substitute None for an unreadable
     or corrupted existing state. Invalid/stale data raises ValueError before any

@@ -6,7 +6,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from index_drawdown import IndexCollector
+from index_drawdown import CboeIndexCollector, IndexCollector
 
 
 NOW = datetime(2026, 10, 17, 12, tzinfo=timezone.utc)
@@ -138,6 +138,181 @@ class IndexProducerTests(unittest.TestCase):
         with patch.object(self.collector, "fetch_page", side_effect=[(first, 3), (remaining, 4)]):
             with self.assertRaises(ValueError):
                 self.collector.fetch_all()
+
+
+def quote(day="Oct 16, 2026", close="90.50", previous="100", status="Closed"):
+    """Shape of https://api.nasdaq.com/api/quote/<SYMBOL>/info?assetclass=index."""
+    return {"symbol": "NDX", "marketStatus": status,
+            "primaryData": {"lastSalePrice": close, "lastTradeTimestamp": day},
+            "keyStats": {"previousclose": {"label": "Previous Close:", "value": previous}}}
+
+
+class QuoteSupplementTests(unittest.TestCase):
+    """The historical API can lag the close by hours; the quote API fills the gap."""
+
+    def setUp(self):
+        self.collector = IndexCollector("NDX", Path("unused-ndx.json"))
+        self.lagging = history(latest=date(2026, 10, 15))  # Oct 16 close missing
+
+    def test_lagging_history_gets_latest_close_from_quote(self):
+        row, _ = self.collector.quote_supplement(quote(), self.lagging, NOW)
+        self.assertEqual(row, {"date": "10/16/2026", "close": "90.50"})
+        result = self.collector.build_payload(self.lagging, len(self.lagging),
+                                              fetched_at=NOW, supplement=row)
+        self.assertEqual(result["current_date"], "2026-10-16")
+        self.assertEqual(result["current_close"], 90.5)
+        self.assertEqual(result["current_close_source"], "nasdaq-quote-info")
+        self.assertEqual(result["supplemented_records"], 1)
+        self.assertAlmostEqual(result["rolling_drawdown_pct"], -9.5)
+        # The window still holds exactly 252 sessions including the quote close.
+        self.assertEqual(result["window_start_date"],
+                         datetime.strptime(self.lagging[250]["date"], "%m/%d/%Y").date().isoformat())
+        self.collector.validate_payload(result, max_fetch_age_seconds=60, now=NOW)
+
+    def test_history_that_already_has_the_session_is_left_alone(self):
+        rows = history(latest=date(2026, 10, 16))
+        row, _ = self.collector.quote_supplement(quote(), rows, NOW)
+        self.assertIsNone(row)
+        result = self.collector.build_payload(rows, len(rows), fetched_at=NOW)
+        self.assertEqual(result["current_close_source"], "nasdaq-historical")
+        self.assertEqual(result["supplemented_records"], 0)
+
+    def test_previous_close_mismatch_means_a_session_may_be_missing(self):
+        row, _ = self.collector.quote_supplement(quote(previous="101"), self.lagging, NOW)
+        self.assertIsNone(row)
+
+    def test_same_day_quote_waits_for_new_york_1615_and_closed_market(self):
+        before = datetime(2026, 10, 16, 20, 14, 59, tzinfo=timezone.utc)
+        at_cutoff = datetime(2026, 10, 16, 20, 15, tzinfo=timezone.utc)
+        self.assertIsNone(self.collector.quote_supplement(quote(), self.lagging, before)[0])
+        self.assertIsNotNone(self.collector.quote_supplement(quote(), self.lagging, at_cutoff)[0])
+        self.assertIsNone(self.collector.quote_supplement(quote(status="Open"), self.lagging, at_cutoff)[0])
+
+    def test_future_weekend_or_unparseable_quote_dates_are_ignored(self):
+        for day in ("Oct 19, 2026", "Oct 17, 2026", "", "16/10/2026"):
+            with self.subTest(day=day):
+                self.assertIsNone(self.collector.quote_supplement(quote(day=day), self.lagging, NOW)[0])
+
+    def test_quote_with_time_suffix_is_parsed(self):
+        row, _ = self.collector.quote_supplement(quote(day="Oct 16, 2026 4:16 PM ET"), self.lagging, NOW)
+        self.assertEqual(row["date"], "10/16/2026")
+
+    def test_invalid_quote_price_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.collector.quote_supplement(quote(close="--"), self.lagging, NOW)
+
+
+class PublishHeartbeatTests(unittest.TestCase):
+    """Frequent external triggers must not create a commit for every fetch."""
+
+    def setUp(self):
+        self.collector = IndexCollector("NDX", Path("unused-ndx.json"))
+        rows = history()
+        self.old = self.collector.build_payload(rows, len(rows), fetched_at=NOW)
+        self.rows = rows
+
+    def fresh(self, minutes):
+        later = NOW + timedelta(minutes=minutes)
+        return later, self.collector.build_payload(self.rows, len(self.rows), fetched_at=later)
+
+    def test_unchanged_data_is_not_republished_within_the_hour(self):
+        later, new = self.fresh(59)
+        self.assertTrue(self.collector.heartbeat_only(self.old, new, later))
+
+    def test_unchanged_data_is_republished_after_the_hour(self):
+        later, new = self.fresh(60)
+        self.assertFalse(self.collector.heartbeat_only(self.old, new, later))
+
+    def test_any_market_data_change_is_published_immediately(self):
+        later, new = self.fresh(5)
+        new["current_close_source"] = "nasdaq-quote-info"
+        self.assertFalse(self.collector.heartbeat_only(self.old, new, later))
+        self.assertFalse(self.collector.heartbeat_only(None, new, later))
+
+    def test_main_keeps_file_when_only_fetched_at_moves(self):
+        import json
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "drawdown.json"
+            collector = IndexCollector("NDX", out)
+            out.write_text(json.dumps(self.old), encoding="utf-8")
+            for minutes, expected_stamp in ((10, self.old["fetched_at"]), (61, None)):
+                later = NOW + timedelta(minutes=minutes)
+                with patch("index_drawdown.utcnow", return_value=later), \
+                     patch.object(collector, "fetch_all", return_value=(self.rows, len(self.rows))), \
+                     patch.object(collector, "fetch_quote", side_effect=OSError("quote down")):
+                    self.assertEqual(collector.main([]), 0)
+                saved = json.loads(out.read_text(encoding="utf-8"))
+                with self.subTest(minutes=minutes):
+                    if expected_stamp:
+                        self.assertEqual(saved["fetched_at"], expected_stamp)
+                    else:
+                        self.assertEqual(saved["fetched_at"], later.isoformat().replace("+00:00", "Z"))
+
+
+def cboe_quote(traded="2026-10-16T16:14:59", price=90.4999, previous=100.0001):
+    """Shape of https://cdn-api.cboe.com/api/global/delayed_quotes/quotes/_SPX.json (data)."""
+    # prev_day_close rolls over overnight, so the collector uses current_price - price_change.
+    return {"symbol": "^SPX", "security_type": "index", "current_price": price,
+            "price_change": price - previous, "close": round(price, 2),
+            "prev_day_close": price, "last_trade_time": traded}
+
+
+class CboeSp500Tests(unittest.TestCase):
+    """S&P 500 comes from Cboe because the Nasdaq API has no SPX."""
+
+    def setUp(self):
+        self.collector = CboeIndexCollector("SPX", Path("unused-spx.json"))
+        self.lagging = history(latest=date(2026, 10, 15))
+
+    def test_spx_contract_is_separate_from_nasdaq_indices(self):
+        rows = history()
+        result = self.collector.build_payload(rows, len(rows), fetched_at=NOW)
+        self.assertEqual(result["symbol"], "SPX")
+        self.assertEqual(result["source"], "Cboe delayed quotes")
+        self.assertEqual(result["current_close_source"], "cboe-historical")
+        self.collector.validate_payload(result, max_fetch_age_seconds=60, now=NOW)
+        ndx = IndexCollector("NDX", Path("unused-ndx.json"))
+        with self.assertRaises(ValueError):
+            ndx.validate_payload(result, now=NOW)
+        with self.assertRaises(ValueError):
+            IndexCollector("SPX", Path("unused.json"))
+        with self.assertRaises(ValueError):
+            CboeIndexCollector("NDX", Path("unused.json"))
+
+    def test_cboe_history_rows_are_converted_and_validated(self):
+        document = [{"date": "2025-01-02", "volume": "0.0", "open": "0", "high": "1", "low": "1", "close": "5868.550000"}]
+        with patch.object(self.collector, "_get", return_value=document * 252):
+            rows, total = self.collector.fetch_all()
+        self.assertEqual(total, 252)
+        self.assertEqual(rows[0], {"date": "01/02/2025", "close": "5868.550000"})
+        with patch.object(self.collector, "_get", return_value=document * 251):
+            with self.assertRaises(ValueError):
+                self.collector.fetch_all()
+        bad = [dict(document[0], close=5868.55)] * 252
+        with patch.object(self.collector, "_get", return_value=bad):
+            with self.assertRaises(ValueError):
+                self.collector.fetch_all()
+
+    def test_final_cboe_quote_fills_lagging_history(self):
+        row, _ = self.collector.quote_supplement(cboe_quote(), self.lagging, NOW)
+        self.assertEqual(row, {"date": "10/16/2026", "close": "90.50"})
+        result = self.collector.build_payload(self.lagging, len(self.lagging), fetched_at=NOW, supplement=row)
+        self.assertEqual(result["current_date"], "2026-10-16")
+        self.assertEqual(result["current_close_source"], "cboe-quote")
+        self.collector.validate_payload(result, max_fetch_age_seconds=60, now=NOW)
+
+    def test_cboe_quote_before_final_timestamp_is_not_used(self):
+        for traded in ("2026-10-16T16:00:00", "2026-10-16T13:14:59", "not a time", None):
+            with self.subTest(traded=traded):
+                row, _ = self.collector.quote_supplement(cboe_quote(traded=traded), self.lagging, NOW)
+                self.assertIsNone(row)
+
+    def test_cboe_quote_needs_matching_previous_close(self):
+        row, _ = self.collector.quote_supplement(cboe_quote(previous=101.0), self.lagging, NOW)
+        self.assertIsNone(row)
+        current = history(latest=date(2026, 10, 16))
+        self.assertIsNone(self.collector.quote_supplement(cboe_quote(), current, NOW)[0])
 
 
 if __name__ == "__main__":

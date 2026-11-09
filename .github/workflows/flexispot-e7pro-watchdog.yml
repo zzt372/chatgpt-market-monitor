@@ -5,13 +5,12 @@ on:
     # Independent from the main :31 hourly browser verification.
     - cron: "17,47 * * * *"
   # This event path does not depend on this workflow's delayed cron schedule.
-  # Only independent market/dental workflows are used; never the E7 Pro workflows themselves.
+  # Only independent market workflows are used; never the E7 Pro workflows themselves.
   workflow_run:
     workflows:
       - "Market Monitor - CNN Fear & Greed"
       - "Market Monitor - Nasdaq 100 Drawdown"
       - "Market Monitor - SOX Drawdown"
-      - "Monitor - Dental Availability"
       - "Market Monitor - CNN Fear & Greed Watchdog"
     types: [completed]
     branches: [main]
