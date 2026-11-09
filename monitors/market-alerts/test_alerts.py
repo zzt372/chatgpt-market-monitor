@@ -299,6 +299,18 @@ class AlertTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "state symbol mismatch"):
             self.evaluate(observation(-16, "2026-10-17", "SPX"), ndx)
 
+    def test_nikkei_has_its_own_levels_state_and_past_bottoms(self):
+        n225 = self.evaluate(observation(-18.78, symbol="N225"))
+        self.assertEqual(n225["status"], "baseline")
+        self.assertEqual(n225["state"]["notified_thresholds_pct"], [])
+        result = self.evaluate(observation(-20.6, "2026-10-17", "N225"), n225["state"])
+        self.assertEqual(result["notification"]["symbol"], "N225")
+        self.assertEqual(result["notification"]["threshold_pct"], -20)
+        self.assertEqual(result["notification"]["reference_bottoms_pct"][0], ["1990-92", -63.2])
+        ndx = self.evaluate(observation(-18))["state"]
+        with self.assertRaisesRegex(ValueError, "state symbol mismatch"):
+            self.evaluate(observation(-21, "2026-10-17", "N225"), ndx)
+
     def test_unrounded_sox_drawdown_does_not_cross_40_early(self):
         initial = self.evaluate(observation(-31, "2026-10-14", "SOX"))["state"]
         almost = self.evaluate(observation(-39.991666, "2026-10-15", "SOX"), initial)
@@ -332,7 +344,7 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(policy["reference"]["window_sessions"], alerts.WINDOW_SESSIONS)
         self.assertEqual(policy["thresholds_pct"],
                          {"NDX": [-20, -30, -40, -50], "SPX": [-15, -20, -30, -40],
-                          "SOX": [-30, -40, -50, -60]})
+                          "SOX": [-30, -40, -50, -60], "N225": [-20, -30, -40, -50]})
         self.assertEqual(policy["thresholds_pct"],
                          {k: list(v) for k, v in alerts.THRESHOLDS_PCT.items()})
         self.assertEqual(policy["reference_bottoms_pct"],

@@ -1,7 +1,8 @@
 """Index close history and trailing 252-session drawdown.
 
 NDX and SOX come from the official Nasdaq API. Nasdaq does not carry the
-S&P 500, so SPX comes from Cboe's public delayed-quote data (full daily close
+S&P 500 or the Nikkei 225: N225 comes from FRED's NIKKEI225 series (Nikkei Inc.
+closes since 1949) and SPX from Cboe's public delayed-quote data (full daily close
 history since 1975; it matched FRED's SP500 series on 2,506 of 2,513 days
 checked on 2026-11-09, the remaining 7 being small differences from 2018-2020).
 """
@@ -26,6 +27,7 @@ WINDOW_3Y = 756
 # the alert task treats fetched_at older than 3 hours as stale.
 HEARTBEAT_SECONDS = 3600
 NEW_YORK = ZoneInfo("America/New_York")
+TOKYO = ZoneInfo("Asia/Tokyo")
 QUOTE_DATE = re.compile(r"^\s*([A-Za-z]{3})\s+(\d{1,2}),\s+(\d{4})")
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0 Safari/537.36",
@@ -62,9 +64,9 @@ def price(text):
     return value
 
 
-def finalized(day, local):
-    """A session close is final once New York passes 16:15 on that day."""
-    return day < local.date() or (day == local.date() and (local.hour, local.minute) >= (16, 15))
+def finalized(day, local, cutoff=(16, 15)):
+    """A session close is final once the market's local time passes the cutoff."""
+    return day < local.date() or (day == local.date() and (local.hour, local.minute) >= cutoff)
 
 
 class IndexCollector:
@@ -76,6 +78,8 @@ class IndexCollector:
     FETCH_METHOD = "nasdaq-api"
     HISTORY_LABEL = "nasdaq-historical"
     QUOTE_LABEL = "nasdaq-quote-info"
+    MARKET_TZ = NEW_YORK
+    CLOSE_CUTOFF = (16, 15)  # regular close 16:00 plus a margin for the final print
 
     def __init__(self, symbol, out):
         if symbol not in self.SYMBOLS:
@@ -121,7 +125,7 @@ class IndexCollector:
         previous close matches the newest history close, so no session is
         skipped. Returns (history-shaped row or None, reason).
         """
-        local = now.astimezone(NEW_YORK)
+        local = now.astimezone(self.MARKET_TZ)
         q = self.parse_quote(quote)
         if q is None:
             return None, "quote data missing"
@@ -130,12 +134,12 @@ class IndexCollector:
             return None, "quote date unparseable"
         if day.weekday() >= 5 or day > local.date():
             return None, "quote date not a past weekday"
-        if not finalized(day, local) or q["open"]:
+        if not finalized(day, local, self.CLOSE_CUTOFF) or q["open"]:
             return None, "quote session not finalized"
         history = {}
         for row in rows:
             d = datetime.strptime(row["date"], "%m/%d/%Y").date()
-            if finalized(d, local):
+            if finalized(d, local, self.CLOSE_CUTOFF):
                 history[d] = row["close"]
         if not history or day <= max(history):
             return None, "history already current"
@@ -200,7 +204,7 @@ class IndexCollector:
             raise ValueError("fetched_at timezone missing")
         if type(total_records) is not int or len(rows) != total_records:
             raise ValueError("incomplete history/count mismatch")
-        local = stamp.astimezone(NEW_YORK)
+        local = stamp.astimezone(self.MARKET_TZ)
         parsed, dates = [], set()
         for row in list(rows) + ([supplement] if supplement else []):
             if not isinstance(row, dict):
@@ -218,7 +222,7 @@ class IndexCollector:
             if not math.isfinite(close) or close <= 0:
                 raise ValueError("invalid close")
             # Today's API row can still contain an intraday price.
-            if d == local.date() and (local.hour, local.minute) < (16, 15):
+            if d == local.date() and (local.hour, local.minute) < self.CLOSE_CUTOFF:
                 continue
             parsed.append((d, close))
         parsed.sort(reverse=True)
@@ -273,8 +277,8 @@ class IndexCollector:
             datetime.strptime(payload[k], "%Y-%m-%d").date()
             for k in ("current_date", "ath_date", "rolling_high_date", "window_start_date",
                       "high_3y_date", "window_3y_start_date"))
-        local = now.astimezone(NEW_YORK)
-        if current_date > local.date() or (current_date == local.date() and (local.hour, local.minute) < (16, 15)):
+        local = now.astimezone(self.MARKET_TZ)
+        if current_date > local.date() or (current_date == local.date() and (local.hour, local.minute) < self.CLOSE_CUTOFF):
             raise ValueError("unfinalized/future current_date")
         if current_date < local.date() - timedelta(days=7):
             raise ValueError("stale current_date")
@@ -420,3 +424,56 @@ class CboeIndexCollector(IndexCollector):
                 "close": text(current),
                 "previous": text(previous),
                 "open": traded is None or (traded.hour, traded.minute) < (16, 10)}
+
+
+class NikkeiCollector(IndexCollector):
+    """Nikkei 225 closes from FRED's NIKKEI225 series (source: Nikkei Inc.).
+
+    FRED carried the 2026-11-09 close the same evening (JST). There is no quote
+    endpoint to fill a lag, so the history alone decides; a missing day simply
+    waits for the next run.
+    """
+
+    SYMBOLS = ("N225",)
+    SOURCE = "FRED NIKKEI225 (Nikkei Inc.)"
+    SOURCE_KIND = "official-historical-close"
+    FETCH_METHOD = "fred-csv"
+    HISTORY_LABEL = "fred-historical"
+    QUOTE_LABEL = "fred-historical"
+    MARKET_TZ = TOKYO
+    CLOSE_CUTOFF = (15, 45)  # Tokyo Stock Exchange closes at 15:30 JST
+
+    def __init__(self, symbol, out):
+        super().__init__(symbol, out)
+        self.base = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=NIKKEI225"
+        self.quote_url = None
+
+    def fetch_page(self, offset=0):
+        raise NotImplementedError("FRED returns the whole history in one document")
+
+    def fetch_all(self):
+        # FRED stalls clients that claim to be a browser (checked 2026-11-10); name the tool instead.
+        req = Request(self.base, headers={"User-Agent": "chatgpt-market-monitor/1.0", "Accept": "text/csv,*/*"})
+        with urlopen(req, timeout=60) as response:
+            if response.status != 200:
+                raise RuntimeError(f"FRED HTTP {response.status}")
+            text = response.read().decode("utf-8")
+        return self.parse_csv(text)
+
+    @staticmethod
+    def parse_csv(text):
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        if not lines or lines[0].split(",")[-1] != "NIKKEI225":
+            raise ValueError("FRED NIKKEI225 header missing")
+        rows = []
+        for line in lines[1:]:
+            day, _, value = line.partition(",")
+            if value in ("", "."):
+                continue  # Japanese holidays are listed without a value
+            rows.append({"date": datetime.strptime(day, "%Y-%m-%d").strftime("%m/%d/%Y"), "close": value})
+        if len(rows) < WINDOW:
+            raise ValueError("historical rows invalid")
+        return rows, len(rows)
+
+    def fetch_quote(self):
+        return None

@@ -7,7 +7,10 @@
     "high": "highest close of the trailing 3 years (756 sessions)",
     "window_sessions": 756,
     "field": "drawdown_3y_pct",
-    "high_fields": ["high_3y_close", "high_3y_date"],
+    "high_fields": [
+      "high_3y_close",
+      "high_3y_date"
+    ],
     "threshold_comparison": "Use the unrounded value. A level is reached when drawdown is less than or equal to its negative threshold.",
     "not_for_decisions": "drawdown_pct/ath_close/ath_date (all-time high) are reference only; rolling_* (252 sessions) are legacy fields kept for older instructions.",
     "why_3_years": "Replaying this state machine over NASDAQ100, S&P 500, SOX, the Nasdaq Composite (1971-), the Nikkei 225 (1949-) and US stocks (1871-, monthly) on 2026-11-10: the all-time high missed every crash that came while an old peak was unrecovered (NASDAQ100/SOX 2008, the Nikkei 1992-2024, US 1937-38); 252 sessions under-measured multi-year declines; 4/5-year windows missed crashes the 3-year window caught. The 3-year window missed only two late deepenings (Nikkei 1965, US 1896) of declines already alerted at shallower levels."
@@ -30,13 +33,92 @@
       -40,
       -50,
       -60
+    ],
+    "N225": [
+      -20,
+      -30,
+      -40,
+      -50
     ]
   },
   "thresholds_rationale": "Levels are aligned by historical rarity of the 3-year-high drawdown: stage 1 about once every 4 years, stage 2 about once every 8 years, stage 3 about once every 10-13 years, stage 4 only in 2000/2008-class crashes.",
   "reference_bottoms_pct": {
-    "NDX": [["2000-02", -82.9], ["2008", -53.7], ["2020", -28.0], ["2022", -35.6]],
-    "SPX": [["2000-02", -49.1], ["2008-09", -56.8], ["2020", -33.9], ["2022", -25.4]],
-    "SOX": [["2000-02", -83.9], ["2008", -68.9], ["2020", -35.0], ["2022", -46.5]]
+    "NDX": [
+      [
+        "2000-02",
+        -82.9
+      ],
+      [
+        "2008",
+        -53.7
+      ],
+      [
+        "2020",
+        -28.0
+      ],
+      [
+        "2022",
+        -35.6
+      ]
+    ],
+    "SPX": [
+      [
+        "2000-02",
+        -49.1
+      ],
+      [
+        "2008-09",
+        -56.8
+      ],
+      [
+        "2020",
+        -33.9
+      ],
+      [
+        "2022",
+        -25.4
+      ]
+    ],
+    "SOX": [
+      [
+        "2000-02",
+        -83.9
+      ],
+      [
+        "2008",
+        -68.9
+      ],
+      [
+        "2020",
+        -35.0
+      ],
+      [
+        "2022",
+        -46.5
+      ]
+    ],
+    "N225": [
+      [
+        "1990-92",
+        -63.2
+      ],
+      [
+        "2000-03",
+        -63.5
+      ],
+      [
+        "2008-09",
+        -61.4
+      ],
+      [
+        "2020",
+        -31.8
+      ],
+      [
+        "2024",
+        -25.5
+      ]
+    ]
   },
   "episode_reset_drawdown_pct": -5,
   "max_fetch_age_seconds": 10800,
@@ -51,8 +133,8 @@
     "instruction": "Do not fetch, evaluate, or notify on Forward P/E or its acquisition failures."
   },
   "task_instructions_ja": [
-    "NASDAQ100・S&P500・SOXを別々に判定し、永続状態も別々に保存する。判定の基準は各指数の直近3年（756取引日）の最高終値からの下落率 drawdown_3y_pct で、全履歴最高値（ATH）・252取引日・日中高値を代用しない。",
-    "段階はNASDAQ100が-20/-30/-40/-50%、S&P500が-15/-20/-30/-40%、SOXが-30/-40/-50/-60%の4段階とし、それより深い下落で追加の段階通知は出さない。表示の丸め値で閾値を判定しない。",
+    "NASDAQ100・S&P500・SOX・日経平均を別々に判定し、永続状態も別々に保存する。判定の基準は各指数の直近3年（756取引日）の最高終値からの下落率 drawdown_3y_pct で、全履歴最高値（ATH）・252取引日・日中高値を代用しない。",
+    "段階はNASDAQ100が-20/-30/-40/-50%、S&P500が-15/-20/-30/-40%、SOXが-30/-40/-50/-60%、日経平均が-20/-30/-40/-50%の4段階とし、それより深い下落で追加の段階通知は出さない。表示の丸め値で閾値を判定しない。",
     "状態のない指数は最新の有効な観測をbaselineとして保存する。その時点で到達済みの段階は通知済み扱いにし、過去の下落を新規到達として通知しない。既存のv3状態が読めない・壊れている場合は初回とみなさず、その指数の判定を止めて状態の復旧を行う。",
     "ポリシーv1/v2の状態（252取引日比・ATH比の段階での通知履歴）は基準も段階も違うため引き継がず、その指数の最初の有効な観測で一度だけv3のbaselineを作り直す。到達済みの段階は通知しない。",
     "同じepisodeで同じ段階を繰り返し通知しない。3年高値比が-5%以上に回復し、前回観測の3年高値に対しても-5%以上なら履歴をリセットする。高値の窓落ちによってのみ-5%以内になった場合はリセットせず、その日の終値×1.05を固定の回復確認目標として保留する。保留中は3年高値比-5%以上かつ終値が固定目標以上でリセットし、高値が再び窓落ちしても目標を下げない。再び-5%未満に下落したら保留目標だけ解除し、通知履歴を保持する。",
@@ -87,5 +169,8 @@
     ],
     "ath_role": "Display the all-history highest closing price, date and drawdown as reference only, labeled ATH reference. Recompute ath_drawdown_pct from current_close/ath_close. ATH does not gate alerts or rearming.",
     "reference_bottoms_role": "Show the same index's past major-crash troughs (3-year-high drawdown) for scale, labeled as past reference. They are not thresholds."
+  },
+  "added_indices": {
+    "N225": "2026-11-10: Nikkei 225 from FRED NIKKEI225 (Nikkei Inc.). No earlier state exists; the first valid observation is its baseline."
   }
 }

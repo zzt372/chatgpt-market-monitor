@@ -1,5 +1,5 @@
 ﻿# マーケット監視の常駐アイコン（通知領域）。
-# 15分ごとに GitHub Actions の4つの更新処理（NASDAQ100・S&P500・SOX・Fear & Greed）を起動し、
+# 15分ごとに GitHub Actions の5つの更新処理（NASDAQ100・S&P500・SOX・日経平均・Fear & Greed）を起動し、
 # GitHub上の公開JSONの値と鮮度をアイコンの色とメニューで表示する。
 # GitHubの予約実行は数時間遅れるため、その補助として動かす。gh のログインを使い、トークンは扱わない。
 # Windows PowerShell 5.1 で日本語を読めるよう、UTF-8 BOM付きで保存する。
@@ -49,11 +49,12 @@ public static class MarketMonitorNative {
 
     $config = @{
         Repo = 'zzt372/chatgpt-market-monitor'
-        Workflows = @('nasdaq-drawdown.yml', 'sp500-drawdown.yml', 'sox-drawdown.yml', 'cnn-fear-greed.yml')
+        Workflows = @('nasdaq-drawdown.yml', 'sp500-drawdown.yml', 'sox-drawdown.yml', 'nikkei-drawdown.yml', 'cnn-fear-greed.yml')
         Sources = @(
             @{ Name = 'NASDAQ100'; Path = 'monitors/nasdaq-drawdown/drawdown.json' },
             @{ Name = 'S&P500'; Path = 'monitors/sp500-drawdown/drawdown.json' },
             @{ Name = 'SOX'; Path = 'monitors/sox-drawdown/drawdown.json' },
+            @{ Name = '日経平均'; Path = 'monitors/nikkei-drawdown/drawdown.json' },
             @{ Name = 'Fear & Greed'; Path = 'monitors/cnn-fear-greed/latest.json' }
         )
         DispatchMinutes = 15          # 更新処理を起動する間隔

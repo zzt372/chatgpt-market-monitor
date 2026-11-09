@@ -26,6 +26,7 @@ THRESHOLDS_PCT = {
     "NDX": (-20, -30, -40, -50),
     "SPX": (-15, -20, -30, -40),
     "SOX": (-30, -40, -50, -60),
+    "N225": (-20, -30, -40, -50),
 }
 # 3-year-high drawdown at the trough of past major crashes, for scale in the
 # notification text only; never a decision input.
@@ -33,6 +34,7 @@ REFERENCE_BOTTOMS_PCT = {
     "NDX": (("2000-02", -82.9), ("2008", -53.7), ("2020", -28.0), ("2022", -35.6)),
     "SPX": (("2000-02", -49.1), ("2008-09", -56.8), ("2020", -33.9), ("2022", -25.4)),
     "SOX": (("2000-02", -83.9), ("2008", -68.9), ("2020", -35.0), ("2022", -46.5)),
+    "N225": (("1990-92", -63.2), ("2000-03", -63.5), ("2008-09", -61.4), ("2020", -31.8), ("2024", -25.5)),
 }
 RESET_DRAWDOWN_PCT = -5
 WINDOW_RECOVERY_CONFIRMATION_PCT = 5
@@ -184,7 +186,8 @@ def _baseline(symbol, current_date, drawdown, high, reached):
 def evaluate_observation(payload, state=None, *, now=None):
     """Return a new state and at most one alert, without mutating either input.
 
-    Call separately for NDX, SPX and SOX, and persist the returned states independently.
+    Call separately for each index (NDX, SPX, SOX, N225) and persist the returned
+    states independently.
     A missing state explicitly means first observation: all already reached levels
     become the baseline without delivery. A v1/v2 state (other reference high and
     other levels) is re-baselined the same way, once, for its own symbol. Never

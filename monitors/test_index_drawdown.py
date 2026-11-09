@@ -6,7 +6,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from index_drawdown import CboeIndexCollector, IndexCollector
+from index_drawdown import CboeIndexCollector, IndexCollector, NikkeiCollector
 
 
 NOW = datetime(2026, 10, 17, 12, tzinfo=timezone.utc)
@@ -351,6 +351,61 @@ class ThreeYearHighTests(unittest.TestCase):
             bad[key] = value
             with self.subTest(key=key, value=value), self.assertRaises(ValueError):
                 self.collector.validate_payload(bad, now=NOW)
+
+
+
+class NikkeiTests(unittest.TestCase):
+    """The Nikkei 225 comes from FRED and closes at 15:30 Tokyo time."""
+
+    def setUp(self):
+        self.collector = NikkeiCollector("N225", Path("unused-n225.json"))
+
+    def csv(self, rows):
+        return "observation_date,NIKKEI225\n" + "\n".join(
+            f"{datetime.strptime(r['date'], '%m/%d/%Y').date().isoformat()},{r['close']}" for r in reversed(rows))
+
+    def test_fred_csv_skips_holidays_and_keeps_closes(self):
+        rows = history(800)
+        text = self.csv(rows).replace("observation_date,NIKKEI225\n", "observation_date,NIKKEI225\n2023-01-02,.\n")
+        parsed, total = NikkeiCollector.parse_csv(text)
+        self.assertEqual(total, 800)
+        self.assertEqual(parsed[-1], {"date": rows[0]["date"], "close": "100"})
+        with self.assertRaises(ValueError):
+            NikkeiCollector.parse_csv(text.replace("NIKKEI225", "SP500", 1))
+        with self.assertRaises(ValueError):
+            NikkeiCollector.parse_csv("observation_date,NIKKEI225\n2026-01-05,100")
+
+    def test_tokyo_close_is_final_after_1545_jst(self):
+        rows = history(800, latest=date(2026, 10, 16))
+        rows[0]["close"] = "80"
+        before = datetime(2026, 10, 16, 6, 44, 59, tzinfo=timezone.utc)   # 15:44:59 JST
+        after = datetime(2026, 10, 16, 6, 45, tzinfo=timezone.utc)        # 15:45 JST
+        early = self.collector.build_payload(rows, len(rows), fetched_at=before)
+        self.assertEqual(early["current_date"], "2026-10-15")
+        settled = self.collector.build_payload(rows, len(rows), fetched_at=after)
+        self.assertEqual(settled["current_date"], "2026-10-16")
+        self.assertAlmostEqual(settled["drawdown_3y_pct"], -20)
+        self.assertEqual(settled["source"], "FRED NIKKEI225 (Nikkei Inc.)")
+        self.collector.validate_payload(settled, max_fetch_age_seconds=60, now=after)
+        # On New York's clock (02:45 ET) this close would still count as unfinished.
+        self.assertEqual(IndexCollector("NDX", Path("x.json")).build_payload(
+            rows, len(rows), fetched_at=after)["current_date"], "2026-10-15")
+
+    def test_main_runs_without_a_quote_endpoint(self):
+        import json
+        import tempfile
+        rows = history(800)
+        stamp = datetime(2026, 10, 17, 3, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "drawdown.json"
+            collector = NikkeiCollector("N225", out)
+            with patch("index_drawdown.utcnow", return_value=stamp), \
+                 patch.object(collector, "fetch_all", return_value=(rows, len(rows))):
+                self.assertEqual(collector.main([]), 0)
+            saved = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual(saved["symbol"], "N225")
+        self.assertEqual(saved["current_close_source"], "fred-historical")
+        self.assertEqual(saved["supplemented_records"], 0)
 
 
 if __name__ == "__main__":
