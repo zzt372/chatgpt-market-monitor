@@ -36,9 +36,12 @@ function Get-MarketItem {
     $age = $NowUtc.ToUniversalTime() - $fetched
     $fetchedText = (Format-Age $age) + 'に取得'
     if ($age.TotalMinutes -lt 1) { $fetchedText = 'たった今取得' }
-    if ($null -ne $Data.rolling_drawdown_pct) {
+    # 指数は直近3年の最高値からの下落率（通知の判定と同じ）。古いデータは252取引日の値で代用する。
+    $indexDrawdown = $Data.drawdown_3y_pct
+    if ($null -eq $indexDrawdown) { $indexDrawdown = $Data.rolling_drawdown_pct }
+    if ($null -ne $indexDrawdown) {
         $day = [DateTime]::ParseExact([string]$Data.current_date, 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
-        $text = '{0}　{1}（{2}/{3}終値・{4}）' -f $Name, (Format-Percent ([double]$Data.rolling_drawdown_pct)), $day.Month, $day.Day, $fetchedText
+        $text = '{0}　{1}（{2}/{3}終値・{4}）' -f $Name, (Format-Percent ([double]$indexDrawdown)), $day.Month, $day.Day, $fetchedText
     } else {
         $fearGreedJa = @{
             'extreme fear' = '極度の恐怖'; 'fear' = '恐怖'; 'neutral' = '中立'

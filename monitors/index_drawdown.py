@@ -19,6 +19,9 @@ from zoneinfo import ZoneInfo
 
 PAGE_SIZE = 5000
 WINDOW = 252
+# Alert decisions (policy v3) use the highest close of the trailing 3 years.
+# The 252-session fields stay for reference and for older task instructions.
+WINDOW_3Y = 756
 # Publish an unchanged payload at most once per hour (fetched_at heartbeat);
 # the alert task treats fetched_at older than 3 hours as stale.
 HEARTBEAT_SECONDS = 3600
@@ -219,12 +222,14 @@ class IndexCollector:
                 continue
             parsed.append((d, close))
         parsed.sort(reverse=True)
-        if len(parsed) < WINDOW:
-            raise ValueError("history too short for 252 finalized sessions")
+        if len(parsed) < WINDOW_3Y:
+            raise ValueError("history too short for 756 finalized sessions")
         current_date, current_close = parsed[0]
         ath_date, ath_close = max(parsed, key=lambda x: (x[1], x[0]))
         window = parsed[:WINDOW]
         high_date, high_close = max(window, key=lambda x: (x[1], x[0]))
+        window3 = parsed[:WINDOW_3Y]
+        high3_date, high3_close = max(window3, key=lambda x: (x[1], x[0]))
         from_quote = bool(supplement) and current_date.strftime("%m/%d/%Y") == supplement["date"]
         return {
             "schema_version": 2, "ok": True, "symbol": self.symbol,
@@ -234,6 +239,9 @@ class IndexCollector:
             "window_sessions": WINDOW, "window_start_date": window[-1][0].isoformat(),
             "rolling_high_close": high_close, "rolling_high_date": high_date.isoformat(),
             "rolling_drawdown_pct": drawdown(current_close, high_close),
+            "window_3y_sessions": WINDOW_3Y, "window_3y_start_date": window3[-1][0].isoformat(),
+            "high_3y_close": high3_close, "high_3y_date": high3_date.isoformat(),
+            "drawdown_3y_pct": drawdown(current_close, high3_close),
             "total_records": total_records, "finalized_records": len(parsed),
             "fetched_at": stamp.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
             "source": self.SOURCE, "source_endpoint": self.base,
@@ -251,14 +259,20 @@ class IndexCollector:
                               "fetch_method": self.FETCH_METHOD, "window_sessions": WINDOW}.items():
             if payload.get(key) != expected:
                 raise ValueError(f"{key} mismatch")
-        current, ath, high = (number(payload[k]) for k in ("current_close", "ath_close", "rolling_high_close"))
-        if not 0 < current <= high <= ath:
-            raise ValueError("invalid close/ATH/rolling high")
-        for key, peak, tolerance in (("drawdown_pct", ath, 0.000051), ("rolling_drawdown_pct", high, 1e-9)):
+        if payload.get("window_3y_sessions") != WINDOW_3Y:
+            raise ValueError("window_3y_sessions mismatch")
+        current, ath, high, high3 = (number(payload[k]) for k in
+                                     ("current_close", "ath_close", "rolling_high_close", "high_3y_close"))
+        if not 0 < current <= high <= high3 <= ath:
+            raise ValueError("invalid close/ATH/3-year high/rolling high")
+        for key, peak, tolerance in (("drawdown_pct", ath, 0.000051), ("rolling_drawdown_pct", high, 1e-9),
+                                     ("drawdown_3y_pct", high3, 1e-9)):
             if abs(number(payload[key]) - (current / peak - 1) * 100) > tolerance:
                 raise ValueError("drawdown mismatch")
-        current_date, ath_date, high_date, start = (datetime.strptime(payload[k], "%Y-%m-%d").date()
-            for k in ("current_date", "ath_date", "rolling_high_date", "window_start_date"))
+        current_date, ath_date, high_date, start, high3_date, start3 = (
+            datetime.strptime(payload[k], "%Y-%m-%d").date()
+            for k in ("current_date", "ath_date", "rolling_high_date", "window_start_date",
+                      "high_3y_date", "window_3y_start_date"))
         local = now.astimezone(NEW_YORK)
         if current_date > local.date() or (current_date == local.date() and (local.hour, local.minute) < (16, 15)):
             raise ValueError("unfinalized/future current_date")
@@ -268,8 +282,11 @@ class IndexCollector:
             raise ValueError("invalid history dates")
         if (current_date - start).days < WINDOW - 1:
             raise ValueError("invalid window dates")
+        if (not start3 <= high3_date <= current_date or start3 > start
+                or (current_date - start3).days < WINDOW_3Y - 1):
+            raise ValueError("invalid 3-year window dates")
         for key in ("total_records", "finalized_records"):
-            if type(payload.get(key)) is not int or payload[key] < WINDOW:
+            if type(payload.get(key)) is not int or payload[key] < WINDOW_3Y:
                 raise ValueError("history too short")
         supplemented = payload.get("supplemented_records", 0)
         if supplemented not in (0, 1) or type(supplemented) is not int:

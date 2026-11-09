@@ -12,7 +12,7 @@ from index_drawdown import CboeIndexCollector, IndexCollector
 NOW = datetime(2026, 10, 17, 12, tzinfo=timezone.utc)
 
 
-def history(count=253, latest=date(2026, 10, 16), price=100):
+def history(count=757, latest=date(2026, 10, 16), price=100):
     """Provide distinct weekday rows, newest first, like the official API."""
     rows = []
     day = latest
@@ -44,6 +44,10 @@ class IndexProducerTests(unittest.TestCase):
         self.assertAlmostEqual(result["rolling_drawdown_pct"], -20)
         self.assertEqual(result["ath_close"], 200)
         self.assertEqual(result["drawdown_pct"], -50)
+        # rows[252] is outside 252 sessions but inside 3 years
+        self.assertEqual(result["window_3y_sessions"], 756)
+        self.assertEqual(result["high_3y_close"], 200)
+        self.assertAlmostEqual(result["drawdown_3y_pct"], -50)
         self.collector.validate_payload(result, max_fetch_age_seconds=60, now=NOW)
 
     def test_rolling_drawdown_retains_threshold_precision(self):
@@ -76,10 +80,10 @@ class IndexProducerTests(unittest.TestCase):
             self.build(rows)
 
     def test_short_or_incomplete_history_is_rejected(self):
-        short = history(251)
-        with self.assertRaises(ValueError):
-            self.build(short)
-        rows = history(252)
+        for count in (251, 755):
+            with self.subTest(count=count), self.assertRaises(ValueError):
+                self.build(history(count))
+        rows = history(756)
         with self.assertRaises(ValueError):
             self.collector.build_payload(rows, len(rows) + 1, fetched_at=NOW)
 
@@ -313,6 +317,40 @@ class CboeSp500Tests(unittest.TestCase):
         self.assertIsNone(row)
         current = history(latest=date(2026, 10, 16))
         self.assertIsNone(self.collector.quote_supplement(cboe_quote(), current, NOW)[0])
+
+
+class ThreeYearHighTests(unittest.TestCase):
+    """Policy v3 decides on the highest close of the trailing 3 years (756 sessions)."""
+
+    def setUp(self):
+        self.collector = IndexCollector("NDX", Path("unused-ndx.json"))
+
+    def test_three_year_high_forgets_an_older_peak(self):
+        rows = history(900)
+        rows[800]["close"] = "300"   # older than 3 years: only the all-time high sees it
+        rows[500]["close"] = "150"   # within 3 years, outside 252 sessions
+        rows[0]["close"] = "90"
+        result = self.collector.build_payload(rows, len(rows), fetched_at=NOW)
+        self.assertEqual(result["ath_close"], 300)
+        self.assertEqual(result["high_3y_close"], 150)
+        self.assertEqual(result["rolling_high_close"], 100)
+        self.assertAlmostEqual(result["drawdown_3y_pct"], -40)
+        self.assertAlmostEqual(result["rolling_drawdown_pct"], -10)
+        self.assertEqual(result["window_3y_start_date"],
+                         datetime.strptime(rows[755]["date"], "%m/%d/%Y").date().isoformat())
+        self.collector.validate_payload(result, max_fetch_age_seconds=60, now=NOW)
+
+    def test_validator_rejects_inconsistent_three_year_fields(self):
+        rows = history(900)
+        rows[500]["close"] = "150"
+        result = self.collector.build_payload(rows, len(rows), fetched_at=NOW)
+        for key, value in (("window_3y_sessions", 252), ("high_3y_close", 99), ("high_3y_close", 301),
+                           ("drawdown_3y_pct", -10), ("high_3y_date", "2026-10-18"),
+                           ("window_3y_start_date", result["window_start_date"])):
+            bad = deepcopy(result)
+            bad[key] = value
+            with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                self.collector.validate_payload(bad, now=NOW)
 
 
 if __name__ == "__main__":

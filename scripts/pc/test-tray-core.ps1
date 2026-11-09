@@ -19,6 +19,9 @@ $ndx = [pscustomobject]@{ ok = $true; rolling_drawdown_pct = -13.562024154603296
 $item = Get-MarketItem -Name 'NASDAQ100' -Data $ndx -NowUtc $now
 Assert-Same "NASDAQ100　${minus}13.56%（11/6終値・12分前に取得）" $item.Text 'index line'
 Assert-Same $false $item.Stale 'fresh index is not stale'
+# 3年高値比があればそちらを表示する（通知の判定と同じ値）
+$both = [pscustomobject]@{ ok = $true; rolling_drawdown_pct = -10.0; drawdown_3y_pct = -42.5; current_date = '2026-11-06'; fetched_at = '2026-11-09T13:08:00Z' }
+Assert-Same "NASDAQ100　${minus}42.50%（11/6終値・12分前に取得）" (Get-MarketItem -Name 'NASDAQ100' -Data $both -NowUtc $now).Text 'three-year drawdown is preferred'
 $justNow = [pscustomobject]@{ ok = $true; rolling_drawdown_pct = -13.562; current_date = '2026-11-06'; fetched_at = '2026-11-09T13:19:30Z' }
 Assert-Same "NASDAQ100　${minus}13.56%（11/6終値・たった今取得）" (Get-MarketItem -Name 'NASDAQ100' -Data $justNow -NowUtc $now).Text 'just fetched line'
 

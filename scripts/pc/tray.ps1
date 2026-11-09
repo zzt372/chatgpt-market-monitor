@@ -262,6 +262,7 @@ public static class MarketMonitorNative {
     $statusItem = $menu.Items.Add('状態を確認しています…'); $statusItem.Enabled = $false
     $scheduleItem = $menu.Items.Add('前回の起動 なし'); $scheduleItem.Enabled = $false
     [void]$menu.Items.Add((New-Object Windows.Forms.ToolStripSeparator))
+    $captionItem = $menu.Items.Add('指数は直近3年の最高値（終値）からの下落率'); $captionItem.Enabled = $false
     $dataItems = @(foreach ($source in $config.Sources) {
         $item = $menu.Items.Add($source.Name.Replace('&', '&&') + '　確認中…'); $item.Enabled = $false; $item
     })

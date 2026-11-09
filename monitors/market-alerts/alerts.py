@@ -1,4 +1,18 @@
-"""Pure per-index drawdown notification decisions; no delivery or file writes."""
+"""Pure per-index drawdown notification decisions; no delivery or file writes.
+
+Policy v3 (2026-11-10) decides on the drawdown from the highest close of the
+trailing 3 years (756 sessions, `drawdown_3y_pct`). Replaying this state machine
+over NASDAQ100, S&P 500, SOX, the Nasdaq Composite (1971-), the Nikkei 225
+(1949-) and Shiller's monthly US stocks (1871-) showed why:
+
+* The all-time high stayed silent through every crash that came while an old
+  peak was still unrecovered: NASDAQ100/SOX in 2008, the Nikkei for 32 years
+  (1992-2024), US stocks in 1937-38. The 3-year high alerted all of them.
+* The trailing 252 sessions under-measured multi-year declines
+  (NASDAQ100 2000-02: -67.4% instead of -82.9%).
+* 4- and 5-year windows missed crashes the 3-year window caught
+  (S&P 500 2011, SOX 2006 and 2011, the Nikkei 1997-2001).
+"""
 
 from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
@@ -6,16 +20,23 @@ from decimal import Decimal
 import math
 
 
-POLICY_VERSION = 2
-STATE_VERSION = 2
+POLICY_VERSION = 3
+STATE_VERSION = 3
 THRESHOLDS_PCT = {
-    "NDX": (-10, -15, -20, -25),
-    "SPX": (-10, -15, -20, -25),
-    "SOX": (-20, -25, -30, -35),
+    "NDX": (-20, -30, -40, -50),
+    "SPX": (-15, -20, -30, -40),
+    "SOX": (-30, -40, -50, -60),
+}
+# 3-year-high drawdown at the trough of past major crashes, for scale in the
+# notification text only; never a decision input.
+REFERENCE_BOTTOMS_PCT = {
+    "NDX": (("2000-02", -82.9), ("2008", -53.7), ("2020", -28.0), ("2022", -35.6)),
+    "SPX": (("2000-02", -49.1), ("2008-09", -56.8), ("2020", -33.9), ("2022", -25.4)),
+    "SOX": (("2000-02", -83.9), ("2008", -68.9), ("2020", -35.0), ("2022", -46.5)),
 }
 RESET_DRAWDOWN_PCT = -5
 WINDOW_RECOVERY_CONFIRMATION_PCT = 5
-WINDOW_SESSIONS = 252
+WINDOW_SESSIONS = 756
 MAX_FETCH_AGE_SECONDS = 10800
 MAX_DATA_AGE_DAYS = 7
 
@@ -62,18 +83,18 @@ def _validate_observation(payload, now):
     symbol = payload.get("symbol")
     if symbol not in THRESHOLDS_PCT:
         raise ValueError("unsupported symbol")
-    if payload.get("window_sessions") != WINDOW_SESSIONS:
-        raise ValueError("window_sessions must be 252")
+    if payload.get("window_3y_sessions") != WINDOW_SESSIONS:
+        raise ValueError("window_3y_sessions must be 756")
     current = _number(payload.get("current_close"), "current_close")
-    high = _number(payload.get("rolling_high_close"), "rolling_high_close")
-    drawdown = _number(payload.get("rolling_drawdown_pct"), "rolling_drawdown_pct")
+    high = _number(payload.get("high_3y_close"), "high_3y_close")
+    drawdown = _number(payload.get("drawdown_3y_pct"), "drawdown_3y_pct")
     if current <= 0 or high <= 0 or current > high:
-        raise ValueError("invalid current or rolling high close")
+        raise ValueError("invalid current or 3-year high close")
     expected = (current / high - 1) * 100
     if not -100 < drawdown <= 0 or abs(drawdown - expected) > 0.0001:
-        raise ValueError("rolling drawdown does not match closes")
+        raise ValueError("3-year drawdown does not match closes")
     current_date = _date(payload.get("current_date"), "current_date")
-    high_date = _date(payload.get("rolling_high_date"), "rolling_high_date")
+    high_date = _date(payload.get("high_3y_date"), "high_3y_date")
     ath = _number(payload.get("ath_close"), "ath_close")
     ath_date = _date(payload.get("ath_date"), "ath_date")
     ath_drawdown = _number(payload.get("drawdown_pct"), "drawdown_pct")
@@ -86,7 +107,7 @@ def _validate_observation(payload, now):
     if current_date < now.date() - timedelta(days=MAX_DATA_AGE_DAYS):
         raise ValueError("current_date is stale")
     if high_date > current_date:
-        raise ValueError("rolling high date is after current_date")
+        raise ValueError("3-year high date is after current_date")
     raw_stamp = payload.get("fetched_at")
     if not isinstance(raw_stamp, str):
         raise ValueError("fetched_at must include a timezone")
@@ -104,12 +125,13 @@ def _validate_observation(payload, now):
     precise_drawdown = _drawdown(current, high)
     context = {
         "current_close": current,
-        "rolling_high_close": high,
-        "rolling_high_date": high_date.isoformat(),
-        "rolling_drawdown_pct": precise_drawdown,
+        "high_3y_close": high,
+        "high_3y_date": high_date.isoformat(),
+        "drawdown_3y_pct": precise_drawdown,
         "ath_close": ath,
         "ath_date": ath_date.isoformat(),
         "ath_drawdown_pct": _drawdown(current, ath),
+        "reference_bottoms_pct": [list(item) for item in REFERENCE_BOTTOMS_PCT[symbol]],
     }
     return symbol, current_date, precise_drawdown, context
 
@@ -117,11 +139,8 @@ def _validate_observation(payload, now):
 def _validate_state(state, symbol):
     if not isinstance(state, dict):
         raise ValueError("state must be an object or None for first observation")
-    version = state.get("schema_version")
-    if version not in (1, STATE_VERSION):
-        raise ValueError("unsupported state schema")
-    if state.get("policy_version") != (1 if version == 1 else POLICY_VERSION):
-        raise ValueError("state policy version requires explicit migration")
+    if state.get("schema_version") != STATE_VERSION or state.get("policy_version") != POLICY_VERSION:
+        raise ValueError("unsupported state schema or policy version")
     if state.get("symbol") != symbol:
         raise ValueError("state symbol mismatch")
     episode = state.get("episode_id")
@@ -137,14 +156,29 @@ def _validate_state(state, symbol):
     if bool(notified) != active or (active and episode < 1):
         raise ValueError("inconsistent episode state")
     _number(state.get("last_drawdown_pct"), "last_drawdown_pct")
-    if version == STATE_VERSION:
-        previous_high = _number(state.get("last_rolling_high_close"), "last_rolling_high_close")
-        if previous_high <= 0:
-            raise ValueError("invalid last rolling high")
-        target = state.get("recovery_target_close")
-        if target is not None and (_number(target, "recovery_target_close") <= 0 or not active):
-            raise ValueError("invalid recovery target")
+    previous_high = _number(state.get("last_high_3y_close"), "last_high_3y_close")
+    if previous_high <= 0:
+        raise ValueError("invalid last 3-year high")
+    target = state.get("recovery_target_close")
+    if target is not None and (_number(target, "recovery_target_close") <= 0 or not active):
+        raise ValueError("invalid recovery target")
     return _date(state.get("last_observation_date"), "last_observation_date")
+
+
+def _baseline(symbol, current_date, drawdown, high, reached):
+    """All already-reached levels become history without any delivery."""
+    return {
+        "schema_version": STATE_VERSION,
+        "policy_version": POLICY_VERSION,
+        "symbol": symbol,
+        "episode_id": 1 if reached else 0,
+        "episode_active": bool(reached),
+        "notified_thresholds_pct": reached,
+        "last_observation_date": current_date.isoformat(),
+        "last_drawdown_pct": drawdown,
+        "last_high_3y_close": high,
+        "recovery_target_close": None,
+    }
 
 
 def evaluate_observation(payload, state=None, *, now=None):
@@ -152,9 +186,11 @@ def evaluate_observation(payload, state=None, *, now=None):
 
     Call separately for NDX, SPX and SOX, and persist the returned states independently.
     A missing state explicitly means first observation: all already reached levels
-    become the baseline without delivery. Never substitute None for an unreadable
-    or corrupted existing state. Invalid/stale data raises ValueError before any
-    decision. Fear & Greed is optional context and is not an entry requirement.
+    become the baseline without delivery. A v1/v2 state (other reference high and
+    other levels) is re-baselined the same way, once, for its own symbol. Never
+    substitute None for an unreadable or corrupted v3 state. Invalid/stale data
+    raises ValueError before any decision. Fear & Greed is optional context and is
+    not an entry requirement.
     """
     stamp = now or datetime.now(timezone.utc)
     if not isinstance(stamp, datetime) or stamp.tzinfo is None:
@@ -162,59 +198,39 @@ def evaluate_observation(payload, state=None, *, now=None):
     stamp = stamp.astimezone(timezone.utc)
     symbol, current_date, drawdown, context = _validate_observation(payload, stamp)
     current = context["current_close"]
-    high = context["rolling_high_close"]
+    high = context["high_3y_close"]
     reached = [level for level in THRESHOLDS_PCT[symbol] if drawdown <= level]
     if state is None:
-        initialized = {
-            "schema_version": STATE_VERSION,
-            "policy_version": POLICY_VERSION,
-            "symbol": symbol,
-            "episode_id": 1 if reached else 0,
-            "episode_active": bool(reached),
-            "notified_thresholds_pct": reached,
-            "last_observation_date": current_date.isoformat(),
-            "last_drawdown_pct": drawdown,
-            "last_rolling_high_close": high,
-            "recovery_target_close": None,
-        }
-        return {"ok": True, "status": "baseline", "state": initialized,
+        return {"ok": True, "status": "baseline",
+                "state": _baseline(symbol, current_date, drawdown, high, reached),
+                "notification": None}
+    if isinstance(state, dict) and state.get("schema_version") in (1, 2):
+        # Earlier policies measured from another high with other levels, so their
+        # notification history cannot be mapped onto v3 levels.
+        if state.get("symbol") != symbol:
+            raise ValueError("state symbol mismatch")
+        return {"ok": True, "status": "migrated",
+                "state": _baseline(symbol, current_date, drawdown, high, reached),
                 "notification": None}
 
     previous_date = _validate_state(state, symbol)
     updated = deepcopy(state)
-    if current_date < previous_date:
+    if current_date <= previous_date:
         return {"ok": True, "status": "ignored", "state": updated,
                 "notification": None}
 
-    migrating = updated["schema_version"] == 1
-    if migrating:
-        # v1 did not retain the previous high: never infer recovery from it.
-        updated["schema_version"] = STATE_VERSION
-        updated["policy_version"] = POLICY_VERSION
-        updated["last_rolling_high_close"] = high
-        updated["recovery_target_close"] = (
-            _recovery_target(current)
-            if updated["episode_active"] and drawdown >= RESET_DRAWDOWN_PCT
-            else None
-        )
-    if current_date == previous_date:
-        return {"ok": True, "status": "migrated" if migrating else "ignored",
-                "state": updated, "notification": None}
-
-    previous_high = updated["last_rolling_high_close"]
+    previous_high = updated["last_high_3y_close"]
     updated["last_observation_date"] = current_date.isoformat()
     updated["last_drawdown_pct"] = drawdown
-    updated["last_rolling_high_close"] = high
+    updated["last_high_3y_close"] = high
     if drawdown >= RESET_DRAWDOWN_PCT and updated["episode_active"]:
         target = updated["recovery_target_close"]
-        if migrating:
-            status = "migrated"
-        elif target is not None:
+        if target is not None:
             status = "reset" if Decimal(str(current)) >= Decimal(str(target)) else "recovery_pending"
         elif _price_recovered(current, previous_high):
             status = "reset"
         else:
-            # The rolling high fell out of the window. A flat price cannot rearm.
+            # The 3-year high fell out of the window. A flat price cannot rearm.
             updated["recovery_target_close"] = _recovery_target(current)
             status = "recovery_pending"
         if status == "reset":
@@ -231,7 +247,7 @@ def evaluate_observation(payload, state=None, *, now=None):
     newly_reached = [level for level in reached
                      if level not in updated["notified_thresholds_pct"]]
     if not newly_reached:
-        return {"ok": True, "status": "migrated" if migrating else "unchanged", "state": updated,
+        return {"ok": True, "status": "unchanged", "state": updated,
                 "notification": None}
     if not updated["episode_active"]:
         updated["episode_id"] += 1
