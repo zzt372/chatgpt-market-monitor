@@ -19,7 +19,7 @@
   "drawdown_3y_pct": -3.4402405444223185,
   "total_records": 13073,
   "finalized_records": 13073,
-  "fetched_at": "2026-11-10T16:47:00.401449Z",
+  "fetched_at": "2026-11-10T17:47:52.534292Z",
   "source": "Cboe delayed quotes",
   "source_endpoint": "https://cdn-api.cboe.com/api/global/delayed_quotes/charts/historical/_SPX.json",
   "source_kind": "exchange-historical-close",
