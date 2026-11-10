@@ -10,6 +10,7 @@ import argparse
 import json
 import math
 import re
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -102,12 +103,30 @@ class IndexCollector:
                 "previous": prev.get("value") if isinstance(prev, dict) else None,
                 "open": str(quote.get("marketStatus", "")).lower() == "open"}
 
+    @staticmethod
+    def _nasdaq_json(url):
+        """GET a Nasdaq API document through curl.
+
+        Since 2026-11-10 12:12 UTC api.nasdaq.com answers Python's urllib with
+        403 whatever the headers, while curl from the same GitHub runner gets
+        200 (checked on 2026-11-11). The block follows the client's TLS
+        fingerprint, so the request goes through curl instead.
+        """
+        command = ["curl", "--silent", "--show-error", "--fail", "--compressed",
+                   "--max-time", "30", "--retry", "2", "--retry-delay", "3"]
+        for key, value in HEADERS.items():
+            command += ["--header", f"{key}: {value}"]
+        try:
+            result = subprocess.run(command + [url], capture_output=True, timeout=120)
+        except FileNotFoundError:
+            raise RuntimeError("curl is required for the Nasdaq API") from None
+        if result.returncode != 0:
+            message = result.stderr.decode("utf-8", "replace").strip() or f"exit {result.returncode}"
+            raise RuntimeError(f"Nasdaq request failed: {message}")
+        return json.loads(result.stdout.decode("utf-8"))
+
     def fetch_quote(self):
-        req = Request(self.quote_url, headers=HEADERS)
-        with urlopen(req, timeout=30) as response:
-            if response.status != 200:
-                raise RuntimeError(f"Nasdaq quote HTTP {response.status}")
-            obj = json.load(response)
+        obj = self._nasdaq_json(self.quote_url)
         if obj.get("status", {}).get("rCode") != 200:
             raise ValueError("Nasdaq quote rCode failure")
         data = obj.get("data")
@@ -167,11 +186,7 @@ class IndexCollector:
         params = {"assetclass": "index", "fromdate": "1985-01-01",
                   "todate": (utcnow().date() + timedelta(days=1)).isoformat(),
                   "limit": PAGE_SIZE, "offset": offset}
-        req = Request(self.base + "?" + urlencode(params), headers=HEADERS)
-        with urlopen(req, timeout=30) as response:
-            if response.status != 200:
-                raise RuntimeError(f"Nasdaq HTTP {response.status}")
-            obj = json.load(response)
+        obj = self._nasdaq_json(self.base + "?" + urlencode(params))
         if obj.get("status", {}).get("rCode") != 200:
             raise ValueError("Nasdaq API rCode failure")
         data = obj.get("data")

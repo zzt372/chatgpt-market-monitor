@@ -3,6 +3,7 @@
 from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -142,6 +143,22 @@ class IndexProducerTests(unittest.TestCase):
         with patch.object(self.collector, "fetch_page", side_effect=[(first, 3), (remaining, 4)]):
             with self.assertRaises(ValueError):
                 self.collector.fetch_all()
+
+    def test_nasdaq_requests_go_through_curl_with_browser_headers(self):
+        done = subprocess.CompletedProcess([], 0, stdout=b'{"status": {"rCode": 200}}', stderr=b"")
+        with patch("index_drawdown.subprocess.run", return_value=done) as run:
+            self.assertEqual(self.collector._nasdaq_json("https://api.nasdaq.com/x"), {"status": {"rCode": 200}})
+        command = run.call_args.args[0]
+        self.assertEqual(command[0], "curl")
+        self.assertIn("--fail", command)
+        self.assertEqual(command[-1], "https://api.nasdaq.com/x")
+        self.assertIn("Referer: https://www.nasdaq.com/", command)
+
+    def test_nasdaq_http_error_is_raised(self):
+        failed = subprocess.CompletedProcess([], 22, stdout=b"", stderr=b"curl: (22) The requested URL returned error: 403")
+        with patch("index_drawdown.subprocess.run", return_value=failed):
+            with self.assertRaisesRegex(RuntimeError, "403"):
+                self.collector._nasdaq_json("https://api.nasdaq.com/x")
 
 
 def quote(day="Oct 16, 2026", close="90.50", previous="100", status="Closed"):
