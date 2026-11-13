@@ -6,7 +6,7 @@
   "market": "JP",
   "currency": "JPY",
   "source_kind": "official-product-browser-rendered",
-  "checked_at": "2026-11-12T23:51:56.707Z",
+  "checked_at": "2026-11-13T01:14:08.381Z",
   "source_urls": [
     "https://www.flexispot.jp/e7-pro.html",
     "https://www.flexispot.jp/new/e7-pro.html"
@@ -17,18 +17,18 @@
     {
       "color": "ホワイト",
       "sku_code": "E7WPro",
-      "price_jpy": 61600,
+      "price_jpy": 41888,
       "regular_price_jpy": 61600
     },
     {
       "color": "ブラック",
       "sku_code": "E7BPro",
-      "price_jpy": 61600,
+      "price_jpy": 41888,
       "regular_price_jpy": 61600
     }
   ],
   "all_colors_verified": true,
-  "lowest_verified_frame_price_jpy": 61600,
+  "lowest_verified_frame_price_jpy": 41888,
   "checkout_and_coupon_verified": false,
   "verification": "Two independent browser sessions on two official URLs; each captures official /sapi/mall-item/item/detail SKU prices for E7WPro and E7BPro, and confirms E7WPro against an enabled white frame-only purchase button.",
   "notes": "Official per-color frame price, excluding tabletop. Coupon-stacked checkout amount not tested; do not deduct unverified coupons."
