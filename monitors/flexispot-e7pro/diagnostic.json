@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "checked_at": "2026-11-14T10:19:10.852Z",
+  "checked_at": "2026-11-14T11:40:07.658Z",
   "valid": true,
   "checks": [
     {
@@ -70,11 +70,6 @@
       "attempts": [
         {
           "attempt": 1,
-          "passed": false,
-          "error": "Error: Official detail API response not captured: none"
-        },
-        {
-          "attempt": 2,
           "passed": true,
           "error": null
         }
