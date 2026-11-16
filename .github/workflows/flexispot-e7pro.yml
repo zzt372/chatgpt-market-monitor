@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   update:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # Playwright 1.56.1 は ubuntu-latest（26.04）のブラウザを入れられない
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
