@@ -17,13 +17,13 @@
   "high_3y_close": 14634.72,
   "high_3y_date": "2026-06-22",
   "drawdown_3y_pct": -35.63443646342397,
-  "total_records": 10824,
+  "total_records": 10825,
   "finalized_records": 10825,
-  "fetched_at": "2026-11-20T12:42:09.262958Z",
+  "fetched_at": "2026-11-20T13:43:03.807117Z",
   "source": "Nasdaq official API",
   "source_endpoint": "https://api.nasdaq.com/api/quote/SOX/historical",
   "source_kind": "official-historical-close",
   "fetch_method": "nasdaq-api",
-  "supplemented_records": 1,
-  "current_close_source": "nasdaq-quote-info"
+  "supplemented_records": 0,
+  "current_close_source": "nasdaq-historical"
 }
