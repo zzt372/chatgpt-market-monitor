@@ -19,7 +19,7 @@
   "drawdown_3y_pct": -42.54355395935146,
   "total_records": 10825,
   "finalized_records": 10826,
-  "fetched_at": "2026-11-21T06:25:34.127691Z",
+  "fetched_at": "2026-11-21T07:26:18.076162Z",
   "source": "Nasdaq official API",
   "source_endpoint": "https://api.nasdaq.com/api/quote/SOX/historical",
   "source_kind": "official-historical-close",
