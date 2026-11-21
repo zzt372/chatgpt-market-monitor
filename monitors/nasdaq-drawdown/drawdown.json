@@ -19,7 +19,7 @@
   "drawdown_3y_pct": -19.842342710207852,
   "total_records": 7844,
   "finalized_records": 7844,
-  "fetched_at": "2026-11-21T13:30:27.026316Z",
+  "fetched_at": "2026-11-21T14:31:24.972001Z",
   "source": "Nasdaq official API",
   "source_endpoint": "https://api.nasdaq.com/api/quote/NDX/historical",
   "source_kind": "official-historical-close",
