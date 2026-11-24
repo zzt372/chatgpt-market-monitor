@@ -17,13 +17,13 @@
   "high_3y_close": 7818.93,
   "high_3y_date": "2026-10-06",
   "drawdown_3y_pct": -7.440404249686338,
-  "total_records": 13082,
+  "total_records": 13083,
   "finalized_records": 13083,
-  "fetched_at": "2026-11-23T23:28:21.660404Z",
+  "fetched_at": "2026-11-24T00:29:17.316098Z",
   "source": "Cboe delayed quotes",
   "source_endpoint": "https://cdn-api.cboe.com/api/global/delayed_quotes/charts/historical/_SPX.json",
   "source_kind": "exchange-historical-close",
   "fetch_method": "cboe-cdn",
-  "supplemented_records": 1,
-  "current_close_source": "cboe-quote"
+  "supplemented_records": 0,
+  "current_close_source": "cboe-historical"
 }
