@@ -19,7 +19,7 @@
   "drawdown_3y_pct": -20.544330416599763,
   "total_records": 19247,
   "finalized_records": 19247,
-  "fetched_at": "2026-11-27T10:23:03.344002Z",
+  "fetched_at": "2026-11-27T11:23:51.172368Z",
   "source": "FRED NIKKEI225 (Nikkei Inc.)",
   "source_endpoint": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=NIKKEI225",
   "source_kind": "official-historical-close",
