@@ -17,13 +17,13 @@
   "high_3y_close": 31224.69,
   "high_3y_date": "2026-10-06",
   "drawdown_3y_pct": -14.406227892094366,
-  "total_records": 7847,
+  "total_records": 7848,
   "finalized_records": 7848,
-  "fetched_at": "2026-11-28T12:43:45.129740Z",
+  "fetched_at": "2026-11-28T13:44:30.134405Z",
   "source": "Nasdaq official API",
   "source_endpoint": "https://api.nasdaq.com/api/quote/NDX/historical",
   "source_kind": "official-historical-close",
   "fetch_method": "nasdaq-api",
-  "supplemented_records": 1,
-  "current_close_source": "nasdaq-quote-info"
+  "supplemented_records": 0,
+  "current_close_source": "nasdaq-historical"
 }
